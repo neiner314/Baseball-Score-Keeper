@@ -5,8 +5,7 @@ struct BaseballScoreKeeperApp: App {
     var body: some Scene {
         WindowGroup {
             RootView()
-                .preferredColorScheme(nil)
-                .tint(Theme.inPlay)
+                .tint(Theme.accent)
         }
     }
 }
@@ -15,12 +14,17 @@ struct BaseballScoreKeeperApp: App {
 struct RootView: View {
     @State private var store: GameStore?
     @State private var hasCheckedForSavedGame = false
+    @State private var appearance: AppAppearance = AppPreferences.defaultTrackingSettings.appearance
 
     var body: some View {
         Group {
             if let store {
                 ScoringContainerView()
                     .environment(store)
+                    .onChange(of: store.settings.appearance) { _, newValue in
+                        appearance = newValue
+                    }
+                    .onAppear { appearance = store.settings.appearance }
             } else if hasCheckedForSavedGame {
                 NewGameView { document in
                     store = GameStore(document: document)
@@ -31,6 +35,7 @@ struct RootView: View {
                     .background(Theme.background)
             }
         }
+        .preferredColorScheme(appearance.colorScheme)
         .task {
             await restoreLastGame()
         }
@@ -50,4 +55,5 @@ struct RootView: View {
 #Preview("One-handed") {
     ScoringContainerView()
         .environment(GameStore(document: GameFactory.sampleGame()))
+        .preferredColorScheme(.dark)
 }

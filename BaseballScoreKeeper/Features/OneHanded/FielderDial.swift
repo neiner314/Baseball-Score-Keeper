@@ -9,8 +9,10 @@ import SwiftUI
 /// than a menu item to find.
 ///
 /// Two ways in. Drag out of the in-play pad and the dial tracks your finger,
-/// releasing on whoever is lit. Or tap, and the dial latches open for a
-/// second, deliberate tap — the same tap-or-drag duality iOS menus have.
+/// releasing on whoever is lit — one gesture, no looking, the ball goes down as
+/// a play by that fielder. Or tap, and the dial latches open so positions can
+/// be tapped in sequence to build a real fielding chain: `3-1`, `6-4-3`, or
+/// whatever the rundown actually was.
 struct FielderDial: View {
     var fingerLocation: CGPoint?
     var coordinateSpace: String
@@ -19,6 +21,8 @@ struct FielderDial: View {
     /// presentation; the drag presentation stays hit-testing-transparent so
     /// the in-play pad keeps receiving the gesture.
     var isInteractive: Bool = false
+    /// The chain entered so far, drawn on the field in order.
+    var chain: [Position] = []
     /// Reports the live drag selection, including nil when the finger moves
     /// clear of every position — that's how a drag is cancelled.
     var onSelectionChange: (Position?) -> Void
@@ -38,6 +42,7 @@ struct FielderDial: View {
 
             ZStack {
                 fieldBackdrop(size: frame.size)
+                chainPath(size: frame.size)
                 markers(size: frame.size)
             }
             .frame(width: frame.width, height: frame.height)
@@ -79,25 +84,44 @@ struct FielderDial: View {
     private func fieldBackdrop(size: CGSize) -> some View {
         ZStack {
             FairTerritoryShape()
-                .fill(Theme.fieldGrass.opacity(0.55))
+                .fill(Theme.fieldGrass.opacity(0.9))
             FairTerritoryShape()
-                .stroke(Theme.hairline, lineWidth: 1)
+                .stroke(Color.white.opacity(0.10), lineWidth: 1)
             InfieldShape()
-                .fill(Theme.fieldDirt.opacity(0.65))
+                .fill(Theme.fieldDirt.opacity(0.9))
             BasePathsShape()
-                .stroke(Color.white.opacity(0.35), lineWidth: 1.5)
+                .stroke(Color.white.opacity(0.22), lineWidth: 1.5)
 
-            if let selection, size.width > 0 {
+            // The live drag draws a line from the plate so the ball's path is
+            // visible while the thumb is still moving.
+            if chain.isEmpty, let selection, size.width > 0 {
                 Path { path in
                     path.move(to: FieldGeometry.homePlate(in: size))
                     path.addLine(to: FieldGeometry.point(for: selection, in: size))
                 }
                 .stroke(
-                    Theme.inPlay,
+                    Theme.accent,
                     style: StrokeStyle(lineWidth: 3, lineCap: .round, dash: [7, 6])
                 )
             }
         }
+        .allowsHitTesting(false)
+    }
+
+    /// The chain drawn as the ball actually travelled: plate to the first
+    /// fielder, then fielder to fielder.
+    private func chainPath(size: CGSize) -> some View {
+        Path { path in
+            guard !chain.isEmpty, size.width > 0 else { return }
+            path.move(to: FieldGeometry.homePlate(in: size))
+            for position in chain {
+                path.addLine(to: FieldGeometry.point(for: position, in: size))
+            }
+        }
+        .stroke(
+            Theme.accent,
+            style: StrokeStyle(lineWidth: 3, lineCap: .round, lineJoin: .round)
+        )
         .allowsHitTesting(false)
     }
 
@@ -108,7 +132,8 @@ struct FielderDial: View {
             ForEach(Position.fielders) { position in
                 FielderMarker(
                     position: position,
-                    isSelected: selection == position
+                    isSelected: selection == position,
+                    chainOrder: chainOrder(for: position)
                 )
                 .contentShape(Circle())
                 .onTapGesture {
@@ -121,27 +146,38 @@ struct FielderDial: View {
             }
         }
     }
+
+    /// Where this position sits in the chain, 1-based. A fielder who touched it
+    /// twice — the pivot man in a rundown — shows the last time.
+    private func chainOrder(for position: Position) -> Int? {
+        guard let index = chain.lastIndex(of: position) else { return nil }
+        return index + 1
+    }
 }
 
 private struct FielderMarker: View {
     var position: Position
     var isSelected: Bool
+    var chainOrder: Int?
 
     /// Fixed outer frame so the tap target stays a comfortable size whether or
     /// not the marker is currently enlarged.
     private let tapTarget: CGFloat = 66
 
+    private var isInChain: Bool { chainOrder != nil }
+    private var isHighlighted: Bool { isSelected || isInChain }
+
     var body: some View {
         ZStack {
             Circle()
-                .fill(isSelected ? Theme.inPlay : Theme.surfaceRaised.opacity(0.92))
-                .frame(width: isSelected ? 64 : 44, height: isSelected ? 64 : 44)
-                .shadow(color: .black.opacity(0.3), radius: isSelected ? 10 : 4, y: 2)
+                .fill(isHighlighted ? Theme.accent : Theme.surfaceHigh.opacity(0.95))
+                .frame(width: isSelected ? 62 : 46, height: isSelected ? 62 : 46)
+                .shadow(color: .black.opacity(0.35), radius: isSelected ? 10 : 4, y: 2)
 
             VStack(spacing: 0) {
                 Text("\(position.rawValue)")
-                    .font(Theme.Typeface.score(isSelected ? 26 : 18))
-                    .foregroundStyle(isSelected ? .white : Theme.primaryText)
+                    .font(Theme.Typeface.score(isSelected ? 25 : 18))
+                    .foregroundStyle(isHighlighted ? .white : Theme.primaryText)
                 if isSelected {
                     Text(position.abbreviation)
                         .font(Theme.Typeface.caption())
@@ -149,8 +185,21 @@ private struct FielderMarker: View {
                 }
             }
         }
+        // The order badge is what makes a long chain readable: tapping
+        // 6-4-3-2-5-1-6 leaves numbered pips around the field.
+        .overlay(alignment: .topTrailing) {
+            if let chainOrder {
+                Text("\(chainOrder)")
+                    .font(Theme.Typeface.label(10, weight: .heavy))
+                    .foregroundStyle(Theme.background)
+                    .frame(width: 18, height: 18)
+                    .background(Circle().fill(Theme.foul))
+                    .offset(x: -6, y: 6)
+            }
+        }
         .frame(width: tapTarget, height: tapTarget)
         .animation(.spring(response: 0.2, dampingFraction: 0.7), value: isSelected)
+        .animation(.spring(response: 0.22, dampingFraction: 0.8), value: chainOrder)
         .accessibilityElement()
         .accessibilityLabel(Text("\(position.rawValue), \(position.fullName)"))
     }

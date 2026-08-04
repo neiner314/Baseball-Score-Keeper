@@ -8,7 +8,8 @@ import SwiftUI
 struct FullSheetScoringView: View {
     @Environment(GameStore.self) private var store
 
-    @State private var pickedFielder: Position?
+    /// The fielding chain being built, in the order the ball was handled.
+    @State private var chain: [Position] = []
     @State private var pickedLocation: FieldLocation?
     @State private var trajectory: Trajectory = .grounder
     @State private var pendingVelocity: Int?
@@ -19,8 +20,18 @@ struct FullSheetScoringView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
-                headerCard
+            VStack(alignment: .leading, spacing: 14) {
+                ScoreBar(state: store.state, teams: store.teams)
+
+                BatterCard(
+                    batter: store.currentBatter,
+                    position: store.currentBatterPosition,
+                    pitches: store.state.currentAtBatPitches,
+                    bases: store.state.bases,
+                    runnerName: { store.runnerOnBase($0)?.shortName },
+                    headline: store.lastHeadline
+                )
+
                 pitchButtons
 
                 if let pitch = store.challengeablePitch {
@@ -28,33 +39,20 @@ struct FullSheetScoringView: View {
                         .frame(maxWidth: .infinity, alignment: .center)
                 }
 
-                if settings.trackPitchVelocity {
-                    QuickChipRow(
-                        title: "MPH",
-                        items: Self.velocityPresets.map { ("\($0)", $0) },
-                        selection: pendingVelocity,
-                        onSelect: { pendingVelocity = (pendingVelocity == $0) ? nil : $0 }
-                    )
-                }
-
-                if settings.trackPitchType {
-                    QuickChipRow(
-                        title: "PITCH",
-                        items: PitchType.allCases.map { ($0.abbreviation, $0) },
-                        selection: pendingPitchType,
-                        onSelect: { pendingPitchType = (pendingPitchType == $0) ? nil : $0 }
-                    )
+                if settings.trackPitchVelocity || settings.trackPitchType {
+                    detailCard
                 }
 
                 if settings.trackBallLocation {
                     fieldSection
                 }
 
+                fieldingSection
                 resultSection
                 baserunningSection
-                PitchSequenceStrip(pitches: store.state.currentAtBatPitches)
             }
-            .padding(16)
+            .padding(.horizontal, Theme.Metrics.screenMargin)
+            .padding(.bottom, 28)
         }
         .background(Theme.background)
         .overlay {
@@ -76,30 +74,6 @@ struct FullSheetScoringView: View {
     }
 
     private static let velocityPresets = [82, 88, 92, 95, 98, 102]
-
-    // MARK: - Header
-
-    private var headerCard: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            CompactScoreHeader(
-                state: store.state,
-                teams: store.teams,
-                batter: store.currentBatter,
-                batterPosition: store.currentBatterPosition,
-                foulCount: store.state.currentAtBatPitches.filter { $0.outcome == .foul }.count,
-                showsFoulCount: settings.trackFoulAndPitchCounts
-            )
-
-            if !store.lastHeadline.isEmpty {
-                Text(store.lastHeadline)
-                    .font(Theme.Typeface.caption())
-                    .foregroundStyle(Theme.secondaryText)
-            }
-        }
-        .padding(Theme.Metrics.cardPadding)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .scorecardSurface()
-    }
 
     // MARK: - Pitch buttons
 
@@ -126,55 +100,134 @@ struct FullSheetScoringView: View {
                 .font(Theme.Typeface.label(16, weight: .bold))
                 .foregroundStyle(.white)
                 .frame(maxWidth: .infinity)
-                .frame(height: 46)
+                .frame(height: 48)
                 .background(
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    RoundedRectangle(cornerRadius: Theme.Metrics.tightRadius, style: .continuous)
                         .fill(Theme.color(for: outcome))
                 )
         }
         .buttonStyle(.plain)
     }
 
-    // MARK: - Field
+    // MARK: - Pitch detail
 
-    private var fieldSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text("BALL IN PLAY — TAP THE FIELD")
-                    .font(.system(size: 10, weight: .semibold, design: .rounded))
-                    .tracking(1.1)
-                    .foregroundStyle(Theme.secondaryText)
-                Spacer()
-                if pickedFielder != nil {
-                    Button("Clear") { clearPick() }
-                        .font(Theme.Typeface.caption())
-                }
+    private var detailCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            if settings.trackPitchVelocity {
+                QuickChipRow(
+                    title: "MPH",
+                    items: Self.velocityPresets.map { ("\($0)", $0) },
+                    selection: pendingVelocity,
+                    onSelect: { pendingVelocity = (pendingVelocity == $0) ? nil : $0 }
+                )
             }
-
-            FieldPlotView(
-                selectedPosition: pickedFielder,
-                onPick: { location, fielder in
-                    pickedLocation = location
-                    pickedFielder = fielder
-                    trajectory = BallInPlayChoice.defaultTrajectory(for: fielder)
-                    Haptics.shared.tap(enabled: settings.hapticsEnabled)
-                }
-            )
-            .frame(maxHeight: 240)
-
-            HStack {
-                Text(pickedFielder.map { "\($0.rawValue) · \($0.fullName)" } ?? "—")
-                    .font(Theme.Typeface.caption())
-                    .foregroundStyle(Theme.secondaryText)
-                Spacer()
-                if settings.notationDetail == .full, pickedFielder != nil {
-                    trajectoryPicker
-                }
+            if settings.trackPitchType {
+                QuickChipRow(
+                    title: "TYPE",
+                    items: PitchType.allCases.map { ($0.abbreviation, $0) },
+                    selection: pendingPitchType,
+                    onSelect: { pendingPitchType = (pendingPitchType == $0) ? nil : $0 }
+                )
             }
         }
         .padding(Theme.Metrics.cardPadding)
         .frame(maxWidth: .infinity, alignment: .leading)
         .scorecardSurface()
+    }
+
+    // MARK: - Field
+
+    private var fieldSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Overline("Ball in play — tap where it went")
+
+            FieldPlotView(
+                selectedPosition: chain.last,
+                onPick: { location, fielder in
+                    pickedLocation = location
+                    append(fielder)
+                }
+            )
+            .frame(maxHeight: 240)
+        }
+        .padding(Theme.Metrics.cardPadding)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .scorecardSurface()
+    }
+
+    // MARK: - Fielding chain
+
+    /// The whole point of this section: every fielder who touched the ball, in
+    /// order. Tapping 6 then 4 then 3 gives `6-4-3`; tapping 3 then 1 gives
+    /// `3-1`; a rundown can run as long as it actually ran.
+    private var fieldingSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Overline("Who handled it")
+                Spacer()
+                if !chain.isEmpty {
+                    Button("Clear") { clearPick() }
+                        .font(Theme.Typeface.caption())
+                        .foregroundStyle(Theme.accent)
+                }
+            }
+
+            HStack(spacing: 10) {
+                Text(chain.isEmpty ? "—" : ChainFormatter.text(chain))
+                    .font(Theme.Typeface.notation(24, weight: .heavy))
+                    .foregroundStyle(chain.isEmpty ? Theme.tertiaryText : Theme.primaryText)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.5)
+
+                Spacer(minLength: 0)
+
+                if !chain.isEmpty {
+                    Button {
+                        _ = chain.popLast()
+                    } label: {
+                        Image(systemName: "delete.left.fill")
+                            .font(.system(size: 18, weight: .semibold))
+                            .foregroundStyle(Theme.secondaryText)
+                            .frame(width: 40, height: 36)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(Text("Remove last fielder"))
+                }
+            }
+
+            fielderChips
+
+            if settings.notationDetail == .full, !chain.isEmpty {
+                trajectoryPicker
+            }
+        }
+        .padding(Theme.Metrics.cardPadding)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .scorecardSurface()
+    }
+
+    private var fielderChips: some View {
+        HStack(spacing: 6) {
+            ForEach(Position.fielders) { position in
+                Button {
+                    append(position)
+                } label: {
+                    Text("\(position.rawValue)")
+                        .font(Theme.Typeface.label(14, weight: .bold))
+                        .frame(width: 32, height: 32)
+                        .background(
+                            Circle().fill(
+                                chain.contains(position) ? Theme.accent : Theme.surfaceRaised
+                            )
+                        )
+                        .foregroundStyle(
+                            chain.contains(position) ? Theme.background : Theme.primaryText
+                        )
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(Text(position.fullName))
+            }
+        }
     }
 
     private var trajectoryPicker: some View {
@@ -183,13 +236,16 @@ struct FullSheetScoringView: View {
                 Button {
                     trajectory = option
                 } label: {
-                    Text(option.notationPrefix.isEmpty ? "G" : option.notationPrefix)
+                    Text(option.label)
                         .font(Theme.Typeface.label(11, weight: .bold))
-                        .frame(width: 26, height: 26)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
                         .background(
-                            Circle().fill(option == trajectory ? Theme.inPlay : Theme.surfaceRaised)
+                            Capsule().fill(option == trajectory ? Theme.accent : Theme.surfaceRaised)
                         )
-                        .foregroundStyle(option == trajectory ? .white : Theme.primaryText)
+                        .foregroundStyle(
+                            option == trajectory ? Theme.background : Theme.secondaryText
+                        )
                 }
                 .buttonStyle(.plain)
             }
@@ -199,17 +255,8 @@ struct FullSheetScoringView: View {
     // MARK: - Results
 
     private var resultSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("RESULT")
-                .font(.system(size: 10, weight: .semibold, design: .rounded))
-                .tracking(1.1)
-                .foregroundStyle(Theme.secondaryText)
-
-            // With ball location turned off there's no field to tap, so the
-            // fielder still has to be pickable or every out would be blocked.
-            if !settings.trackBallLocation {
-                fielderChips
-            }
+        VStack(alignment: .leading, spacing: 10) {
+            Overline("Result")
 
             FlowRow(spacing: 8) {
                 ForEach(BallInPlayChoice.allCases) { choice in
@@ -225,37 +272,20 @@ struct FullSheetScoringView: View {
                     store.recordPlay(.strikeout(looking: true, uncaught: false))
                 }
             }
+
+            if chain.isEmpty {
+                Text("Hits and home runs don't need a fielder. Everything else does.")
+                    .font(Theme.Typeface.caption())
+                    .foregroundStyle(Theme.tertiaryText)
+            }
         }
         .padding(Theme.Metrics.cardPadding)
         .frame(maxWidth: .infinity, alignment: .leading)
         .scorecardSurface()
     }
 
-    private var fielderChips: some View {
-        HStack(spacing: 6) {
-            ForEach(Position.fielders) { position in
-                Button {
-                    pickedFielder = (pickedFielder == position) ? nil : position
-                    trajectory = BallInPlayChoice.defaultTrajectory(for: position)
-                } label: {
-                    Text("\(position.rawValue)")
-                        .font(Theme.Typeface.label(13, weight: .bold))
-                        .frame(width: 30, height: 30)
-                        .background(
-                            Circle().fill(
-                                pickedFielder == position ? Theme.inPlay : Theme.surfaceRaised
-                            )
-                        )
-                        .foregroundStyle(pickedFielder == position ? .white : Theme.primaryText)
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel(Text(position.fullName))
-            }
-        }
-    }
-
     private func resultButton(_ choice: BallInPlayChoice) -> some View {
-        let enabled = isEnabled(choice)
+        let enabled = !choice.requiresFielder || !chain.isEmpty
         return Button {
             commit(choice)
         } label: {
@@ -264,7 +294,7 @@ struct FullSheetScoringView: View {
                 .foregroundStyle(.white)
                 .padding(.horizontal, 16)
                 .frame(height: 40)
-                .background(Capsule().fill(choice.tint.opacity(enabled ? 1 : 0.3)))
+                .background(Capsule().fill(choice.tint.opacity(enabled ? 1 : 0.25)))
         }
         .buttonStyle(.plain)
         .disabled(!enabled)
@@ -282,24 +312,11 @@ struct FullSheetScoringView: View {
         .buttonStyle(.plain)
     }
 
-    /// Outs need a fielder to be meaningful; hits don't.
-    private func isEnabled(_ choice: BallInPlayChoice) -> Bool {
-        switch choice {
-        case .single, .double, .triple, .homeRun:
-            return true
-        default:
-            return pickedFielder != nil
-        }
-    }
-
     // MARK: - Baserunning
 
     private var baserunningSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("BASERUNNING")
-                .font(.system(size: 10, weight: .semibold, design: .rounded))
-                .tracking(1.1)
-                .foregroundStyle(Theme.secondaryText)
+        VStack(alignment: .leading, spacing: 10) {
+            Overline("Baserunning")
 
             FlowRow(spacing: 8) {
                 ForEach(store.state.bases.occupied) { base in
@@ -328,6 +345,14 @@ struct FullSheetScoringView: View {
 
     // MARK: - Actions
 
+    private func append(_ fielder: Position) {
+        if chain.isEmpty {
+            trajectory = BallInPlayChoice.defaultTrajectory(for: fielder)
+        }
+        chain.append(fielder)
+        Haptics.shared.tap(enabled: settings.hapticsEnabled)
+    }
+
     private func record(pitch outcome: PitchOutcome) {
         store.recordPitch(outcome: outcome, velocity: pendingVelocity, type: pendingPitchType)
         pendingVelocity = nil
@@ -335,37 +360,24 @@ struct FullSheetScoringView: View {
     }
 
     private func commit(_ choice: BallInPlayChoice) {
-        let batted = pickedFielder.map { _ in
-            BattedBall(trajectory: trajectory, location: pickedLocation)
-        }
+        guard
+            let outcome = choice.outcome(
+                chain: chain,
+                trajectory: trajectory,
+                location: pickedLocation
+            )
+        else { return }
 
         store.beginGroup()
         record(pitch: .inPlay)
-
-        if let fielder = pickedFielder {
-            store.recordPlay(
-                choice.outcome(fielder: fielder, trajectory: trajectory, location: pickedLocation)
-            )
-        } else if let kind = hitKind(for: choice) {
-            store.recordPlay(.hit(kind, batted: batted, fielder: nil))
-        }
+        store.recordPlay(outcome)
         store.endGroup()
 
         clearPick()
     }
 
-    private func hitKind(for choice: BallInPlayChoice) -> HitKind? {
-        switch choice {
-        case .single: .single
-        case .double: .double
-        case .triple: .triple
-        case .homeRun: .homeRun
-        default: nil
-        }
-    }
-
     private func clearPick() {
-        pickedFielder = nil
+        chain = []
         pickedLocation = nil
     }
 }

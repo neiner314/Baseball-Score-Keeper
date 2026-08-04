@@ -65,10 +65,10 @@ scoreboard, not for the hand.
 Two ways in, the same duality iOS menus have:
 
 - **Tap** — either the pitch pad or the **IN PLAY** pad. The dial latches open
-  and waits for a second, deliberate tap on a fielder. Nothing is written
-  until you pick one, so a stray tap costs a dismissal rather than an undo.
+  and lets you tap out the whole fielding chain, then commit it. Nothing is
+  written until you do, so a stray tap costs a dismissal rather than an undo.
 - **Press the IN PLAY pad and drag** — the dial tracks your finger. Release on
-  whoever is lit.
+  whoever is lit; that's a one-fielder chain, straight to the result ring.
 
 Either way a field appears in the lower third of the screen, inside the thumb's
 arc, with all nine positions laid out where they actually stand — so "it went
@@ -77,10 +77,33 @@ Each position you cross ticks.
 
 Then a result ring appears centred where your thumb already is, with **OUT**
 directly under it — the common case is a tap with no travel — and 1B / 2B / 3B
-/ HR / E / FC / DP fanned around it.
+/ HR / E / FC / DP / TP / SF / SH fanned around it.
 
-Turn on **"Dial releases straight to an out"** in Settings and the ring is
-skipped entirely: drag, release, done.
+Turn on **"Drag straight to an out"** in Settings and the ring is skipped for
+the drag gesture entirely: drag, release, done.
+
+#### The fielding chain
+
+Tapping the dial open puts it in chain mode, and every tap **appends**. Tap 6,
+then 4, then 3 and you get `6-4-3`. Tap 3 then 1 and you get `3-1`. Tap
+6-4-3-2-5-1-6 and that is exactly what goes in the book — there is no cap and
+no assumed shape. Each fielder picks up a numbered badge as you go, the path is
+drawn on the field, and `⌫` takes back the last one.
+
+A chain of one is completed the way a scorer would assume: a grounder to short
+becomes `6-3`, a fly to centre stays `F8`, a grounder the first baseman handled
+himself stays `3U`. **A chain of two or more is never second-guessed** — `6-4`
+stays `6-4` rather than growing a throw to first that never happened.
+
+The one-gesture drag path is unchanged and still costs one motion: it enters a
+one-fielder chain and goes straight to the ring.
+
+#### Balls nobody fielded
+
+A home run can't be attributed to a fielder, so it doesn't have to be. With the
+dial open and nothing tapped, the primary button reads **"NOBODY FIELDED IT"**
+and opens a ring of 1B / 2B / 3B / HR only. Every outcome that genuinely needs
+someone to have touched the ball still requires a chain.
 
 ### Scoring without looking
 
@@ -173,19 +196,52 @@ isn't interesting; disagreeing about whether that was a hit is. Plays are
 aligned within each half-inning, so one missed play throws off that half and
 nothing after it, and anything you missed or invented is called out as such.
 
+## The scorebook
+
+The `⊞` button in the top strip opens the page itself: rows are batting-order
+slots, columns are innings, and each box carries the notation plus a diamond
+shaded as far as that runner got.
+
+It behaves like paper. The box is written when the at-bat ends — `1B` — and
+then **keeps filling in** as later batters move the runner along, closing all
+four sides when they score. A stranded runner gets the open circle, a runner
+thrown out on the bases gets a grey path, the batter's out number goes in the
+top-left corner and RBIs in the bottom-right. Tap any box for it in words.
+
+It is built by replaying the log through the same engine the live screen uses
+and writing down what happens to the bases — it re-implements no rules of its
+own. A slot that bats around in one inning gets two boxes and the column
+widens.
+
+The live screen carries the same information at a glance: a **base diamond**
+that fills as runners reach, both teams' runs in large type with the batting
+side highlighted, and count and outs as pips.
+
 ## The other two layouts
 
 Cycle between layouts with the top-left button, or set a default in Settings.
 
 | Layout | For |
 | --- | --- |
-| **Pitch-first** | Compact header, thumb cluster, flips to the field on a ball in play |
+| **Pitch-first** | Scoreboard, batter card, thumb cluster |
 | **Full sheet** | Everything visible at once — every rare play is one tap, needs two hands |
-| **One-handed** | Big scoreboard-style count lights, nothing but the cluster |
+| **One-handed** | Same, plus the big velocity readout |
 
 Settings decides how much the live screen has to carry. Turning off pitch
 velocity, ball location, pitch type or foul counts **removes** those controls
 rather than greying them out — fewer things to hit means less looking.
+
+Velocity and pitch type live in a collapsed rail just above the thumb cluster
+rather than open in the middle of the screen. Collapsed, it still shows what's
+armed for the next pitch.
+
+## Look
+
+Dark by default, and neutral on purpose: near-black greys with no tint, so the
+six action colors — ball, called strike, swinging strike, foul, in play, hit by
+pitch — are the only saturated things on screen. If everything is colorful,
+nothing reads at a glance. Light and System are both available under
+Settings → Appearance.
 
 ## What it scores
 
@@ -212,7 +268,7 @@ The engine handles a full game, not just the count:
 
 ```
 Models/    Plain value types — no UI, nothing beyond Foundation
-Engine/    ScoringEngine, BoxScoreBuilder, Notation — pure functions
+Engine/    ScoringEngine, BoxScoreBuilder, ScorebookBuilder, Notation — pure functions
 League/    Roster providers, league feeds, file import
 Verify/    Official-scoring comparison
 Store/     GameStore (the only mutable thing) + file persistence
@@ -230,6 +286,11 @@ edits game state; it appends events, and state is whatever the log adds up to.
 That's what makes undo a matter of dropping the last event and replaying, and
 it's why the box score can be rebuilt from scratch at any moment.
 
+The scorebook leans on the same property from the other direction. Rather than
+re-deriving where runners went, `ScorebookBuilder` replays the log through the
+engine and records what the engine did to the bases after each event — so the
+page can never disagree with the live screen about who scored.
+
 Challenges are where that design pays for itself. A won challenge is resolved
 by **rewriting the pitch it points at and replaying**, rather than trying to
 unwind a walk or a strikeout inside a running fold. The count, the plate
@@ -246,7 +307,7 @@ xcodebuild test -scheme BaseballScoreKeeper \
   -destination 'platform=iOS Simulator,name=iPhone 16'
 ```
 
-Roughly 145 tests cover the engine (count handling, forced advancement, the
+Roughly 180 tests cover the engine (count handling, forced advancement, the
 third-out rule that cancels runs, earned vs. unearned runs, walk-offs, extra
 innings, substitutions), scorebook notation, the box score and decision
 assignment, the flick-direction and dial hit-testing maths, the pitch pad
@@ -255,6 +316,14 @@ challenges, including a won challenge on ball four unwalking the batter and on
 strike three erasing the out. The import layer is covered at its pure edges:
 roster-file parsing, position-code mapping, play-by-play mapping, and the
 official-scoring diff.
+
+The fielding chain is pinned end to end — `3-1`, `6-4`, `6-4-3 DP`,
+`5-4-3 TP`, `3U`, `F8`, the seven-link rundown, and that a home run builds with
+no fielder while everything that needs one refuses to. The scorebook page has
+its own tests for the part most likely to be subtly wrong: that a box opened as
+a single closes as a run two batters later, that a stranded runner is marked
+left on base rather than thrown out, and that a runner erased on a double play
+is marked the other way round.
 
 **The network calls themselves are not covered, and have never run.** The
 container this was built in blocks `statsapi.mlb.com` at the egress proxy, so
@@ -277,8 +346,11 @@ Deliberate v1 choices, all overridable by the scorer:
 - **Runner advancement** uses conventional defaults (everyone up one on a
   single, two on a double). A runner who takes an extra base needs a manual
   override from the full sheet layout.
-- **Double plays** default to the 6-4-3 shape — the batter and the runner on
-  first. Any other combination is a manual override.
+- **Double plays** record whatever chain you tap. Which *runners* they erase
+  still defaults to the 6-4-3 shape — the batter and the runner on first — and
+  any other combination is a manual override. The notation and the outs are
+  independent: `3-6-3 DP` writes correctly, but who it retired is still the
+  default pair unless you say otherwise.
 - **Earned runs** use the standard approximation: a run is unearned if the
   runner reached on an error, or if it scored after the inning's third out
   *should* have been made. Full inning reconstruction (replaying the half as if

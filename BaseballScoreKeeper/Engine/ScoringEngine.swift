@@ -15,6 +15,9 @@ struct PlateAppearanceResult: Identifiable, Codable, Hashable, Sendable {
     var batterID: UUID
     var pitcherID: UUID
     var battingSide: Side
+    /// Zero-based batting order slot, so the scorebook knows which row this
+    /// belongs in even after a pinch hitter takes the spot over.
+    var battingSlot: Int
     var inning: Int
     var half: Half
     var outcome: PlayOutcome
@@ -29,6 +32,7 @@ struct PlateAppearanceResult: Identifiable, Codable, Hashable, Sendable {
         batterID: UUID,
         pitcherID: UUID,
         battingSide: Side,
+        battingSlot: Int = 0,
         inning: Int,
         half: Half,
         outcome: PlayOutcome,
@@ -42,6 +46,7 @@ struct PlateAppearanceResult: Identifiable, Codable, Hashable, Sendable {
         self.batterID = batterID
         self.pitcherID = pitcherID
         self.battingSide = battingSide
+        self.battingSlot = battingSlot
         self.inning = inning
         self.half = half
         self.outcome = outcome
@@ -61,6 +66,10 @@ struct ApplyResult: Sendable {
     var runs: [ScoredRun] = []
     var outsRecorded: Int = 0
     var halfInningEnded: Bool = false
+    /// Who was still standing on a base when the third out was made. Reported
+    /// because the bases are cleared as part of ending the half, which would
+    /// otherwise make a stranded runner indistinguishable from a retired one.
+    var strandedRunnerIDs: [UUID] = []
     var gameEnded: Bool = false
     /// Short line for the announcer and the post-play toast: "Strike two",
     /// "Ground out, 6-3", "Base hit, run scores".
@@ -372,6 +381,8 @@ enum ScoringEngine {
             batterID: batterID,
             pitcherID: pitcherID,
             battingSide: battingSide,
+            // Read before `advanceBatter()` below moves the order on.
+            battingSlot: working.battingLineup.battingIndex,
             inning: working.inning,
             half: working.half,
             outcome: outcome,
@@ -734,6 +745,7 @@ enum ScoringEngine {
         guard result.state.outs >= 3 else { return }
         var working = result.state
 
+        result.strandedRunnerIDs = working.bases.occupied.compactMap { working.bases[$0]?.playerID }
         working.leftOnBase[working.battingSide] += working.bases.runnerCount
         working.bases.clear()
         working.outs = 0

@@ -80,6 +80,8 @@ struct GameImportView: View {
                     }
                 }
             }
+            .scrollContentBackground(.hidden)
+            .background(Theme.background)
             .navigationTitle("Import Game")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -206,6 +208,8 @@ struct RosterImportView: View {
                         .foregroundStyle(Theme.miss)
                 }
             }
+            .scrollContentBackground(.hidden)
+            .background(Theme.background)
             .navigationTitle("Import \(teamLabel)")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

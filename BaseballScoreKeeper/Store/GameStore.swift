@@ -71,6 +71,12 @@ final class GameStore {
         BoxScoreBuilder.build(document: document)
     }
 
+    /// The scorebook pages, rebuilt from the log. Cheap enough to call from a
+    /// view body — it's the same fold the live state comes from.
+    func buildScorebook() -> SideValues<ScorebookPage> {
+        ScorebookBuilder.build(document: document)
+    }
+
     // MARK: - Recording
 
     /// Opens an undo group. Everything recorded until `endGroup` is treated as

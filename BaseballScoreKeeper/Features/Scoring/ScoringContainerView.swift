@@ -8,6 +8,7 @@ import SwiftUI
 struct ScoringContainerView: View {
     @Environment(GameStore.self) private var store
 
+    @State private var showsScorebook = false
     @State private var showsBoxScore = false
     @State private var showsSettings = false
     @State private var showsSubstitution = false
@@ -16,7 +17,7 @@ struct ScoringContainerView: View {
     var body: some View {
         ZStack(alignment: .top) {
             layoutView
-                .padding(.top, 34)
+                .padding(.top, 40)
 
             controlStrip
 
@@ -25,6 +26,9 @@ struct ScoringContainerView: View {
             }
         }
         .background(Theme.background)
+        .sheet(isPresented: $showsScorebook) {
+            ScorebookView().environment(store)
+        }
         .sheet(isPresented: $showsBoxScore) {
             BoxScoreView().environment(store)
         }
@@ -50,61 +54,60 @@ struct ScoringContainerView: View {
     }
 
     private var controlStrip: some View {
-        HStack(spacing: 14) {
-            Button {
+        HStack(spacing: 4) {
+            controlButton(store.settings.preferredLayout.symbolName, label: "Switch layout") {
                 cycleLayout()
-            } label: {
-                Image(systemName: store.settings.preferredLayout.symbolName)
             }
-            .accessibilityLabel(Text("Switch layout"))
 
-            Spacer()
+            Spacer(minLength: 0)
 
-            Button {
+            controlButton("arrow.left.arrow.right", label: "Substitution") {
                 showsSubstitution = true
-            } label: {
-                Image(systemName: "arrow.left.arrow.right")
             }
-            .accessibilityLabel(Text("Substitution"))
-
-            Button {
+            controlButton("square.grid.3x3", label: "Scorebook") {
+                showsScorebook = true
+            }
+            controlButton("list.number", label: "Box score") {
                 showsBoxScore = true
-            } label: {
-                Image(systemName: "list.number")
             }
-            .accessibilityLabel(Text("Box score"))
-
             if store.document.supportsAccuracyCheck {
-                Button {
+                controlButton("checkmark.seal", label: "Compare with official scoring") {
                     showsAccuracy = true
-                } label: {
-                    Image(systemName: "checkmark.seal")
                 }
-                .accessibilityLabel(Text("Compare with official scoring"))
             }
-
-            Button {
+            controlButton("slider.horizontal.3", label: "Settings") {
                 showsSettings = true
-            } label: {
-                Image(systemName: "slider.horizontal.3")
             }
-            .accessibilityLabel(Text("Settings"))
         }
-        .font(.system(size: 15, weight: .semibold))
-        .foregroundStyle(Theme.secondaryText)
-        .padding(.horizontal, 20)
-        .padding(.top, 6)
+        .padding(.horizontal, Theme.Metrics.screenMargin - 6)
+        .padding(.top, 4)
+    }
+
+    private func controlButton(
+        _ symbol: String,
+        label: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(Theme.secondaryText)
+                .frame(width: 38, height: 34)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(Text(label))
     }
 
     private var finalBanner: some View {
         Text("FINAL")
-            .font(Theme.Typeface.label(12, weight: .heavy))
+            .font(Theme.Typeface.label(11, weight: .heavy))
             .tracking(2)
-            .foregroundStyle(.white)
+            .foregroundStyle(Theme.background)
             .padding(.horizontal, 14)
-            .padding(.vertical, 6)
+            .padding(.vertical, 5)
             .background(Capsule().fill(Theme.miss))
-            .padding(.top, 40)
+            .padding(.top, 44)
     }
 
     /// Cycles through the three layouts so the scorer can flip between the

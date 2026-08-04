@@ -62,6 +62,27 @@ enum NotationDetail: String, Codable, CaseIterable, Identifiable, Sendable {
     }
 }
 
+/// Light, dark, or whatever the phone is doing.
+///
+/// Dark is the default rather than `.system`, because the app is used in dim
+/// places — a stadium bowl at night, a dark room in front of a TV — and a white
+/// sheet in either is a flashlight in the face.
+enum AppAppearance: String, Codable, CaseIterable, Identifiable, Sendable {
+    case dark
+    case light
+    case system
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .dark: "Dark"
+        case .light: "Light"
+        case .system: "System"
+        }
+    }
+}
+
 /// The "what do you want to track" screen. Every toggle here removes UI from
 /// the live scoring screen rather than just hiding data — the point is that
 /// the fewer things you track, the less there is to hit.
@@ -76,6 +97,7 @@ struct TrackingSettings: Codable, Hashable, Sendable {
     var notationDetail: NotationDetail = .standard
     var preferredLayout: ScoringLayout = .pitchFirst
     var handedness: Handedness = .right
+    var appearance: AppAppearance = .dark
     var hapticsEnabled: Bool = true
     var spokenConfirmations: Bool = false
     /// Skip the result ring and score every ball in play as an out at the
@@ -117,6 +139,8 @@ struct TrackingSettings: Codable, Hashable, Sendable {
             ?? defaults.preferredLayout
         handedness = try container.decodeIfPresent(Handedness.self, forKey: .handedness)
             ?? defaults.handedness
+        appearance = try container.decodeIfPresent(AppAppearance.self, forKey: .appearance)
+            ?? defaults.appearance
     }
 }
 
