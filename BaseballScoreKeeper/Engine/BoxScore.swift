@@ -99,12 +99,24 @@ struct BoxScore: Sendable {
     var pitching: SideValues<[PitchingLine]>
     var teams: SideValues<TeamRoster>
     var isFinal: Bool
+    var challenges: [ChallengeRecord]
+    var challengesRemaining: SideValues<Int>
 
     var winningSide: Side? {
         guard isFinal else { return nil }
         if totals.away.runs > totals.home.runs { return .away }
         if totals.home.runs > totals.away.runs { return .home }
         return nil
+    }
+
+    func challenges(for side: Side) -> [ChallengeRecord] {
+        challenges.filter { $0.side == side }
+    }
+
+    /// "1 of 2" — challenges won out of challenges used.
+    func challengeRecord(for side: Side) -> (won: Int, used: Int) {
+        let theirs = challenges(for: side)
+        return (theirs.filter { $0.result == .overturned }.count, theirs.count)
     }
 }
 
@@ -121,6 +133,11 @@ enum BoxScoreBuilder {
         var pitching: [UUID: PitchingLine] = [:]
         var battingOrder: [UUID] = []
         var pitchingOrder: SideValues<[UUID]> = SideValues(repeating: [])
+        var challenges: [ChallengeRecord] = []
+
+        // Challenges rewrite the calls they were made against, so the box
+        // score has to count the corrected pitches, not the original ones.
+        let events = ScoringEngine.resolved(document.events)
 
         // Score after each event, plus who was on the mound for each side, so
         // decisions can be worked out at the end.
@@ -135,7 +152,7 @@ enum BoxScoreBuilder {
             pitchingOrder: &pitchingOrder
         )
 
-        for (index, recorded) in document.events.enumerated() {
+        for (index, recorded) in events.enumerated() {
             let pitcherBefore = state.currentPitcherID
             let fieldingSideBefore = state.fieldingSide
             let basesBefore = state.bases
@@ -170,6 +187,19 @@ enum BoxScoreBuilder {
                 if let runner = basesBefore[base] {
                     batting[runner.playerID]?.caughtStealing += 1
                 }
+
+            case .challenge(let challenge):
+                challenges.append(
+                    ChallengeRecord(
+                        id: challenge.id,
+                        side: challenge.role.side(battingSide: state.battingSide),
+                        role: challenge.role,
+                        result: challenge.result,
+                        originalOutcome: challenge.originalOutcome,
+                        inning: state.inning,
+                        half: state.half
+                    )
+                )
 
             default:
                 break
@@ -263,7 +293,9 @@ enum BoxScoreBuilder {
             batting: battingBySide,
             pitching: pitchingBySide,
             teams: document.teams,
-            isFinal: state.isFinal
+            isFinal: state.isFinal,
+            challenges: challenges,
+            challengesRemaining: state.challengesRemaining
         )
     }
 

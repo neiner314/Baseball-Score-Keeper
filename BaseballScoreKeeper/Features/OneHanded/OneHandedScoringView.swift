@@ -43,6 +43,7 @@ struct OneHandedScoringView: View {
     @State private var flow = BallInPlayState()
     @State private var pendingVelocity: Int?
     @State private var pendingPitchType: PitchType?
+    @State private var showsChallengeSheet = false
 
     private let space = "scoringSpace"
 
@@ -74,6 +75,21 @@ struct OneHandedScoringView: View {
                     onPick: { commit(choice: $0) },
                     onChangeTrajectory: { flow.trajectory = $0 },
                     onCancel: { flow.reset() }
+                )
+            }
+
+            if showsChallengeSheet, let pitch = store.challengeablePitch {
+                ChallengeSheet(
+                    pitch: pitch,
+                    teams: store.teams,
+                    battingSide: store.state.battingSide,
+                    challengesRemaining: store.challengesRemaining,
+                    suggestedRole: store.suggestedChallengeRole,
+                    onCommit: { role, result in
+                        store.recordChallenge(role: role, result: result)
+                        showsChallengeSheet = false
+                    },
+                    onCancel: { showsChallengeSheet = false }
                 )
             }
         }
@@ -111,6 +127,8 @@ struct OneHandedScoringView: View {
 
             Spacer(minLength: 0)
 
+            challengePrompt
+
             trackingChips
 
             PitchSequenceStrip(pitches: store.state.currentAtBatPitches)
@@ -133,6 +151,22 @@ struct OneHandedScoringView: View {
                 .padding(.top, 10)
                 .transition(.opacity)
                 .animation(.easeOut(duration: 0.2), value: store.lastHeadline)
+        }
+    }
+
+    /// Only on screen while the call is actually reviewable, which is the rule
+    /// the challenge system already works by.
+    @ViewBuilder
+    private var challengePrompt: some View {
+        if let pitch = store.challengeablePitch, !showsChallengeSheet {
+            ChallengePrompt(pitch: pitch) {
+                Haptics.shared.tap(enabled: settings.hapticsEnabled)
+                withAnimation(.easeOut(duration: 0.16)) {
+                    showsChallengeSheet = true
+                }
+            }
+            .padding(.bottom, 10)
+            .transition(.move(edge: .bottom).combined(with: .opacity))
         }
     }
 

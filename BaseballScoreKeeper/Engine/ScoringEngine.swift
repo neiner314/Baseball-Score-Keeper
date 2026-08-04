@@ -78,17 +78,76 @@ enum ScoringEngine {
 
     static func initialState(document: GameDocument) -> GameState {
         var state = GameState(lineups: document.startingLineups)
+        state.challengesRemaining = SideValues(repeating: document.rules.challengesPerTeam)
         state.ensureLineScoreDepth()
         return state
     }
 
     /// Replays an entire event log from scratch.
     static func replay(document: GameDocument) -> GameState {
+        replayDetailed(document: document).state
+    }
+
+    /// Replay that also hands back the last event's result, so a caller that
+    /// had to rebuild still has something to report to the scorer.
+    static func replayDetailed(document: GameDocument) -> (state: GameState, last: ApplyResult?) {
         var state = initialState(document: document)
-        for recorded in document.events {
-            state = apply(recorded.event, to: state, document: document).state
+        var last: ApplyResult?
+        for recorded in resolved(document.events) {
+            let result = apply(recorded.event, to: state, document: document)
+            state = result.state
+            last = result
         }
-        return state
+        return (state, last)
+    }
+
+    // MARK: - Challenge resolution
+
+    /// Rewrites the log so that a won challenge changes the call it was made
+    /// against, then hands the corrected stream to the ordinary fold.
+    ///
+    /// This is what makes challenges cheap. Correcting a ball to a strike
+    /// after the fact could mean a walk never happened, or a strikeout did —
+    /// unwinding that inside a running fold would be miserable. Fixing the
+    /// pitch and replaying gets the count, the plate appearance and everything
+    /// downstream right for free, and undoing the challenge un-corrects it
+    /// just as automatically.
+    static func resolved(_ events: [RecordedEvent]) -> [RecordedEvent] {
+        guard events.contains(where: \.event.isChallenge) else { return events }
+
+        var output = events
+        for index in output.indices {
+            guard
+                case .challenge(let challenge) = output[index].event,
+                let pitchIndex = challengedPitchIndex(before: index, in: output),
+                case .pitch(var pitch) = output[pitchIndex].event,
+                pitch.outcome.isChallengeable
+            else { continue }
+
+            pitch.challengeResult = challenge.result
+            if challenge.result == .overturned, let corrected = pitch.outcome.challengeReversal {
+                pitch.outcome = corrected
+            }
+            output[pitchIndex].event = .pitch(pitch)
+        }
+        return output
+    }
+
+    /// A challenge has to be immediate, so it can only reach the pitch it
+    /// directly follows. Anything else in between means the window has closed.
+    private static func challengedPitchIndex(before index: Int, in events: [RecordedEvent]) -> Int? {
+        var cursor = index - 1
+        while cursor >= 0 {
+            switch events[cursor].event {
+            case .pitch:
+                return cursor
+            case .challenge:
+                cursor -= 1
+            default:
+                return nil
+            }
+        }
+        return nil
     }
 
     // MARK: - Apply
@@ -127,6 +186,8 @@ enum ScoringEngine {
             return applyStolenBase(from: base, to: working, document: document, isIndifference: true)
         case .substitution(let substitution):
             return applySubstitution(substitution, to: working, document: document)
+        case .challenge(let challenge):
+            return applyChallenge(challenge, to: working, document: document)
         case .endHalfInning:
             var result = ApplyResult(state: working, plateAppearance: nil)
             result.state.outs = 3
@@ -616,6 +677,41 @@ enum ScoringEngine {
         return result
     }
 
+    // MARK: - Challenges
+
+    /// By the time this runs the corrected pitch has already been folded, so
+    /// the count on screen is right and all that's left is deciding whether
+    /// the team keeps the challenge.
+    private static func applyChallenge(
+        _ challenge: Challenge,
+        to state: GameState,
+        document: GameDocument
+    ) -> ApplyResult {
+        var working = state
+        let side = challenge.role.side(battingSide: working.battingSide)
+
+        // Win it and you keep it; lose it and you're charged.
+        let isRetained = challenge.result == .overturned
+            && document.rules.challengeRetainedWhenOverturned
+        if !isRetained {
+            working.challengesRemaining[side] = max(0, working.challengesRemaining[side] - 1)
+        }
+
+        var result = ApplyResult(state: working, plateAppearance: nil)
+        let team = document.teams[side].abbreviation
+        let remaining = working.challengesRemaining[side]
+        let plural = remaining == 1 ? "" : "s"
+
+        switch challenge.result {
+        case .overturned:
+            let corrected = challenge.originalOutcome.challengeReversal?.spokenLabel ?? "corrected"
+            result.headline = "\(team) wins the challenge — \(corrected). \(remaining) left"
+        case .stands:
+            result.headline = "\(team) loses the challenge — call stands. \(remaining) challenge\(plural) left"
+        }
+        return result
+    }
+
     // MARK: - Half innings and endings
 
     private static func finishHalfInningIfNeeded(_ result: inout ApplyResult, document: GameDocument) {
@@ -634,6 +730,20 @@ enum ScoringEngine {
             working.inning += 1
         }
         working.ensureLineScoreDepth()
+
+        // Reaching extra innings hands a challenge back to anyone who has run
+        // out. Fires exactly once, on the way into the first extra inning.
+        if !working.hasGrantedExtraInningsChallenges,
+           working.inning > document.rules.regulationInnings,
+           document.rules.usesChallenges {
+            working.hasGrantedExtraInningsChallenges = true
+            let grant = document.rules.extraInningsChallengeGrant
+            if grant > 0 {
+                for side in Side.allCases where working.challengesRemaining[side] == 0 {
+                    working.challengesRemaining[side] = grant
+                }
+            }
+        }
 
         // Extra-innings runner on second, if the league uses it. The runner is
         // whoever made the last out, i.e. the slot before the leadoff batter.

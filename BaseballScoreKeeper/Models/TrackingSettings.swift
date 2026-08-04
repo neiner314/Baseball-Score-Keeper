@@ -71,6 +71,8 @@ struct TrackingSettings: Codable, Hashable, Sendable {
     var trackBallLocation: Bool = true
     var trackPitchType: Bool = true
     var trackFoulAndPitchCounts: Bool = true
+    /// Ball-strike challenges. Off for leagues that don't review calls.
+    var trackChallenges: Bool = true
     var notationDetail: NotationDetail = .standard
     var preferredLayout: ScoringLayout = .pitchFirst
     var handedness: Handedness = .right
@@ -86,6 +88,36 @@ struct TrackingSettings: Codable, Hashable, Sendable {
     /// turned everything off gets nothing but the pitch pad.
     var showsVelocityRow: Bool { trackPitchVelocity }
     var showsPitchTypeRow: Bool { trackPitchType }
+
+    init() {}
+
+    /// Decoded leniently so a game saved by an older build still opens after
+    /// new options are added.
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let defaults = TrackingSettings()
+
+        func flag(_ key: CodingKeys, _ fallback: Bool) throws -> Bool {
+            try container.decodeIfPresent(Bool.self, forKey: key) ?? fallback
+        }
+
+        trackPitchVelocity = try flag(.trackPitchVelocity, defaults.trackPitchVelocity)
+        trackPitchLocation = try flag(.trackPitchLocation, defaults.trackPitchLocation)
+        trackBallLocation = try flag(.trackBallLocation, defaults.trackBallLocation)
+        trackPitchType = try flag(.trackPitchType, defaults.trackPitchType)
+        trackFoulAndPitchCounts = try flag(.trackFoulAndPitchCounts, defaults.trackFoulAndPitchCounts)
+        trackChallenges = try flag(.trackChallenges, defaults.trackChallenges)
+        hapticsEnabled = try flag(.hapticsEnabled, defaults.hapticsEnabled)
+        spokenConfirmations = try flag(.spokenConfirmations, defaults.spokenConfirmations)
+        assumeOutOnDialRelease = try flag(.assumeOutOnDialRelease, defaults.assumeOutOnDialRelease)
+
+        notationDetail = try container.decodeIfPresent(NotationDetail.self, forKey: .notationDetail)
+            ?? defaults.notationDetail
+        preferredLayout = try container.decodeIfPresent(ScoringLayout.self, forKey: .preferredLayout)
+            ?? defaults.preferredLayout
+        handedness = try container.decodeIfPresent(Handedness.self, forKey: .handedness)
+            ?? defaults.handedness
+    }
 }
 
 /// A whole game as it lives on disk: the roster, the settings in force, and

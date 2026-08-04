@@ -55,6 +55,19 @@ enum PitchOutcome: String, Codable, CaseIterable, Identifiable, Sendable {
         }
     }
 
+    /// What this call becomes if a challenge overturns it. Only the umpire's
+    /// location calls can be challenged — a swing and miss or a foul is not a
+    /// judgement about the strike zone, so neither is reviewable.
+    var challengeReversal: PitchOutcome? {
+        switch self {
+        case .ball: .calledStrike
+        case .calledStrike: .ball
+        default: nil
+        }
+    }
+
+    var isChallengeable: Bool { challengeReversal != nil }
+
     /// Scorebook mark for the pitch sequence strip.
     var mark: String {
         switch self {
@@ -120,18 +133,24 @@ struct Pitch: Identifiable, Codable, Hashable, Sendable {
     var type: PitchType?
     /// Where it crossed the plate, normalized to the strike-zone box.
     var location: FieldLocation?
+    /// Set when this pitch was challenged. If the challenge was won, `outcome`
+    /// already holds the corrected call — this is what marks the pitch in the
+    /// sequence strip so the correction is visible rather than silent.
+    var challengeResult: ChallengeResult?
 
     init(
         id: UUID = UUID(),
         outcome: PitchOutcome,
         velocity: Int? = nil,
         type: PitchType? = nil,
-        location: FieldLocation? = nil
+        location: FieldLocation? = nil,
+        challengeResult: ChallengeResult? = nil
     ) {
         self.id = id
         self.outcome = outcome
         self.velocity = velocity
         self.type = type
         self.location = location
+        self.challengeResult = challengeResult
     }
 }

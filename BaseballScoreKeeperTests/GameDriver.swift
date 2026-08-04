@@ -25,9 +25,19 @@ struct GameDriver {
 
     @discardableResult
     mutating func apply(_ event: GameEvent) -> ApplyResult {
+        document.events.append(RecordedEvent(event: event))
+
+        // A challenge rewrites a pitch that has already been folded in, so the
+        // whole log has to be re-read — same as the store does.
+        if event.requiresFullReplay {
+            let rebuilt = ScoringEngine.replayDetailed(document: document)
+            state = rebuilt.state
+            lastResult = rebuilt.last
+            return rebuilt.last ?? ApplyResult(state: state, plateAppearance: nil)
+        }
+
         let result = ScoringEngine.apply(event, to: state, document: document)
         state = result.state
-        document.events.append(RecordedEvent(event: event))
         lastResult = result
         return result
     }
@@ -40,6 +50,18 @@ struct GameDriver {
     @discardableResult
     mutating func play(_ outcome: PlayOutcome, advances: [ManualAdvance]? = nil) -> ApplyResult {
         apply(.play(outcome, manualAdvances: advances))
+    }
+
+    mutating func challenge(
+        role: ChallengeRole,
+        result: ChallengeResult,
+        original: PitchOutcome
+    ) {
+        apply(
+            .challenge(
+                Challenge(role: role, result: result, originalOutcome: original)
+            )
+        )
     }
 
     /// Four balls.

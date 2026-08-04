@@ -54,6 +54,8 @@ enum GameEvent: Codable, Hashable, Sendable {
     case passedBallAdvance
     case defensiveIndifference(from: Base)
     case substitution(Substitution)
+    /// A ball-strike challenge against the pitch that immediately preceded it.
+    case challenge(Challenge)
     /// Manual half-inning end, for the rare case the scorer needs to force it.
     case endHalfInning
     case endGame
@@ -72,6 +74,16 @@ enum GameEvent: Codable, Hashable, Sendable {
         if case .substitution = self { return true }
         return false
     }
+
+    var isChallenge: Bool {
+        if case .challenge = self { return true }
+        return false
+    }
+
+    /// A challenge rewrites the pitch it points at, so the log has to be
+    /// folded again from the beginning rather than applied on top of the state
+    /// the uncorrected pitch already produced.
+    var requiresFullReplay: Bool { isChallenge }
 }
 
 struct RecordedEvent: Identifiable, Codable, Hashable, Sendable {

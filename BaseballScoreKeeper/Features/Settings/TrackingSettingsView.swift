@@ -30,6 +30,12 @@ struct TrackingSettingsView: View {
                     Toggle(isOn: $store.settings.trackPitchLocation) {
                         SettingLabel("Strike-zone location", detail: "Where it crossed the plate")
                     }
+                    Toggle(isOn: $store.settings.trackChallenges) {
+                        SettingLabel(
+                            "Ball-strike challenges",
+                            detail: "Review a call right after it's made"
+                        )
+                    }
                 } header: {
                     Text("What do you want to track?")
                 } footer: {
@@ -82,6 +88,12 @@ struct TrackingSettingsView: View {
                 Section("Rules") {
                     LabeledContent("Regulation innings", value: "\(store.document.rules.regulationInnings)")
                     LabeledContent("Designated hitter", value: store.document.rules.usesDesignatedHitter ? "Yes" : "No")
+                    LabeledContent("Challenges per team", value: "\(store.document.rules.challengesPerTeam)")
+                    LabeledContent(
+                        "Challenges left",
+                        value: "\(store.teams.away.abbreviation) \(store.challengesRemaining.away) · "
+                            + "\(store.teams.home.abbreviation) \(store.challengesRemaining.home)"
+                    )
                 }
             }
             .navigationTitle("Settings")

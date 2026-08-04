@@ -13,6 +13,7 @@ struct FullSheetScoringView: View {
     @State private var trajectory: Trajectory = .grounder
     @State private var pendingVelocity: Int?
     @State private var pendingPitchType: PitchType?
+    @State private var showsChallengeSheet = false
 
     private var settings: TrackingSettings { store.settings }
 
@@ -21,6 +22,11 @@ struct FullSheetScoringView: View {
             VStack(alignment: .leading, spacing: 18) {
                 headerCard
                 pitchButtons
+
+                if let pitch = store.challengeablePitch {
+                    ChallengePrompt(pitch: pitch) { showsChallengeSheet = true }
+                        .frame(maxWidth: .infinity, alignment: .center)
+                }
 
                 if settings.trackPitchVelocity {
                     QuickChipRow(
@@ -51,6 +57,22 @@ struct FullSheetScoringView: View {
             .padding(16)
         }
         .background(Theme.background)
+        .overlay {
+            if showsChallengeSheet, let pitch = store.challengeablePitch {
+                ChallengeSheet(
+                    pitch: pitch,
+                    teams: store.teams,
+                    battingSide: store.state.battingSide,
+                    challengesRemaining: store.challengesRemaining,
+                    suggestedRole: store.suggestedChallengeRole,
+                    onCommit: { role, result in
+                        store.recordChallenge(role: role, result: result)
+                        showsChallengeSheet = false
+                    },
+                    onCancel: { showsChallengeSheet = false }
+                )
+            }
+        }
     }
 
     private static let velocityPresets = [82, 88, 92, 95, 98, 102]

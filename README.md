@@ -92,6 +92,35 @@ skipped entirely: drag, release, done.
 - **Undo** is a dedicated pad in the same thumb cluster. A ball in play and its
   result are recorded as one group, so undoing takes them both back.
 
+### Challenging a ball or strike
+
+The moment you record a ball or a called strike, a **Challenge** prompt appears
+— and it disappears as soon as the next pitch does. That's not a UI shortcut,
+it's the rule: challenges have to be immediate, so if the prompt isn't on
+screen the window has closed. Swings, fouls and balls in play never show it;
+they aren't umpire judgements about the strike zone, so there's nothing to
+review.
+
+Tapping it opens a bottom-anchored sheet: who challenged (batter, pitcher or
+catcher — the only three who may), and how it came back. The header shows the
+correction that's at stake, e.g. `Called strike → Ball`.
+
+- **Overturned** — the call is corrected and the team **keeps** the challenge.
+- **Call stands** — the team is **charged** one.
+
+The challenging team is derived from who asked: the batter challenges for the
+side at bat, the pitcher and catcher for the side in the field. Each team
+starts with two, and any team that has run out gets one back on reaching extra
+innings.
+
+**A won challenge really does rewind the game.** Win one on ball four and the
+walk un-happens — the runner comes off first, the same batter is back up, and
+the count reads 3-1. Win one on strike three and the out comes off the board.
+A correction that ends the at-bat works the same way in reverse: overturn a
+ball into strike three and the strikeout is recorded. Corrected pitches keep a
+flag in the sequence strip so the change is visible rather than silent, and the
+box score lists every challenge with who made it, when, and whether it was won.
+
 ## The other two layouts
 
 Cycle between layouts with the top-left button, or set a default in Settings.
@@ -118,6 +147,8 @@ The engine handles a full game, not just the count:
 - Automatic baserunning with sensible defaults, plus per-runner manual
   overrides when the default guessed wrong
 - Stolen bases, caught stealing, pickoffs, balks, wild pitches, passed balls
+- Ball-strike challenges, including the correction rewinding a walk or a
+  strikeout that the original call had already produced
 - Substitutions: pinch hitters, pinch runners, defensive changes, pitching
   changes and position switches, with the DH handled correctly (the pitcher
   never enters the batting order)
@@ -140,6 +171,13 @@ edits game state; it appends events, and state is whatever the log adds up to.
 That's what makes undo a matter of dropping the last event and replaying, and
 it's why the box score can be rebuilt from scratch at any moment.
 
+Challenges are where that design pays for itself. A won challenge is resolved
+by **rewriting the pitch it points at and replaying**, rather than trying to
+unwind a walk or a strikeout inside a running fold. The count, the plate
+appearance, the batting order and the box score all come out right for free —
+and undoing the challenge un-corrects the pitch just as automatically, because
+the correction only ever existed in the resolved stream.
+
 ## Tests
 
 `⌘U` in Xcode, or:
@@ -149,11 +187,13 @@ xcodebuild test -scheme BaseballScoreKeeper \
   -destination 'platform=iOS Simulator,name=iPhone 16'
 ```
 
-Roughly 75 tests cover the engine (count handling, forced advancement, the
+Roughly 100 tests cover the engine (count handling, forced advancement, the
 third-out rule that cancels runs, earned vs. unearned runs, walk-offs, extra
 innings, substitutions), scorebook notation, the box score and decision
-assignment, the flick-direction and dial hit-testing maths, and the pitch pad
-mapping — including that hit-by-pitch is unreachable by any flick.
+assignment, the flick-direction and dial hit-testing maths, the pitch pad
+mapping — including that hit-by-pitch is unreachable by any flick — and
+challenges, including a won challenge on ball four unwalking the batter and on
+strike three erasing the out.
 
 ## Known simplifications
 
@@ -172,3 +212,10 @@ Deliberate v1 choices, all overridable by the scorer:
   requirement for a starter, and the standard save conditions. Unusual cases —
   a scorer's discretionary win between two equally effective relievers — may
   need a manual correction.
+- **Challenge rules** are configurable in `GameRules` because leagues differ:
+  `challengesPerTeam` (2), `challengeRetainedWhenOverturned` (true) and
+  `extraInningsChallengeGrant` (1 to any team that has run out). Set
+  `challengesPerTeam` to 0, or turn the setting off, for leagues that don't
+  review calls at all. A challenge is only allowed against the pitch it
+  immediately follows, which is both the rule and what keeps the correction
+  unambiguous.

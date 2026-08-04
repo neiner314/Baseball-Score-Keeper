@@ -198,12 +198,37 @@ private struct PitchMark: View {
                 .foregroundStyle(.white)
                 .frame(width: 22, height: 22)
                 .background(Circle().fill(Theme.color(for: pitch.outcome)))
+                // A reviewed call carries a flag, so a corrected mark never
+                // looks like it was simply entered that way.
+                .overlay(alignment: .topTrailing) {
+                    if let challenge = pitch.challengeResult {
+                        Image(systemName: "flag.fill")
+                            .font(.system(size: 7, weight: .bold))
+                            .foregroundStyle(.white)
+                            .padding(2)
+                            .background(
+                                Circle().fill(
+                                    challenge == .overturned ? Theme.hitByPitch : Theme.neutral
+                                )
+                            )
+                            .offset(x: 4, y: -4)
+                    }
+                }
 
             if let velocity = pitch.velocity {
                 Text("\(velocity)")
                     .font(.system(size: 9, weight: .medium, design: .rounded))
                     .foregroundStyle(Theme.secondaryText)
             }
+        }
+        .accessibilityLabel(Text(accessibilityDescription))
+    }
+
+    private var accessibilityDescription: String {
+        guard let challenge = pitch.challengeResult else { return pitch.outcome.spokenLabel }
+        switch challenge {
+        case .overturned: return "\(pitch.outcome.spokenLabel), overturned on challenge"
+        case .stands: return "\(pitch.outcome.spokenLabel), challenge failed"
         }
     }
 }

@@ -247,7 +247,43 @@ struct GameRules: Codable, Hashable, Sendable {
     var extraInningRunnerOnSecond: Bool = false
     var mercyRuleDifference: Int?
 
+    // MARK: Ball-strike challenges
+
+    /// Challenges each team starts with. Zero disables the system for leagues
+    /// that don't use it.
+    var challengesPerTeam: Int = 2
+    /// A team that wins its challenge isn't charged for it.
+    var challengeRetainedWhenOverturned: Bool = true
+    /// Challenges handed to a team that has none left once the game reaches
+    /// extra innings.
+    var extraInningsChallengeGrant: Int = 1
+
+    var usesChallenges: Bool { challengesPerTeam > 0 }
+
     static let standard = GameRules()
+
+    init() {}
+
+    /// Decoded leniently so a game saved by an older build still opens after
+    /// new rules are added.
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let defaults = GameRules()
+
+        regulationInnings = try container.decodeIfPresent(Int.self, forKey: .regulationInnings)
+            ?? defaults.regulationInnings
+        usesDesignatedHitter = try container.decodeIfPresent(Bool.self, forKey: .usesDesignatedHitter)
+            ?? defaults.usesDesignatedHitter
+        extraInningRunnerOnSecond = try container.decodeIfPresent(Bool.self, forKey: .extraInningRunnerOnSecond)
+            ?? defaults.extraInningRunnerOnSecond
+        mercyRuleDifference = try container.decodeIfPresent(Int.self, forKey: .mercyRuleDifference)
+        challengesPerTeam = try container.decodeIfPresent(Int.self, forKey: .challengesPerTeam)
+            ?? defaults.challengesPerTeam
+        challengeRetainedWhenOverturned = try container.decodeIfPresent(Bool.self, forKey: .challengeRetainedWhenOverturned)
+            ?? defaults.challengeRetainedWhenOverturned
+        extraInningsChallengeGrant = try container.decodeIfPresent(Int.self, forKey: .extraInningsChallengeGrant)
+            ?? defaults.extraInningsChallengeGrant
+    }
 }
 
 /// Everything derived by replaying the event log. Never edited directly by
@@ -270,6 +306,10 @@ struct GameState: Codable, Hashable, Sendable {
     /// Outs that *would* have been recorded this half-inning but for an error.
     /// Runs scoring past three real-plus-phantom outs are unearned.
     var phantomOuts: Int = 0
+    /// Ball-strike challenges each team has left.
+    var challengesRemaining = SideValues(repeating: 0)
+    /// Guards the one-time extra-innings replenishment.
+    var hasGrantedExtraInningsChallenges = false
 
     init(lineups: SideValues<LineupState>) {
         self.lineups = lineups

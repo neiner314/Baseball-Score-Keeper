@@ -86,18 +86,31 @@ final class GameStore {
 
     func record(_ event: GameEvent) {
         let recorded = RecordedEvent(event: event, groupID: activeGroupID)
-        let result = ScoringEngine.apply(event, to: state, document: document)
-
         document.events.append(recorded)
-        state = result.state
-        lastHeadline = result.headline
-        if let appearance = result.plateAppearance {
-            lastPlateAppearance = appearance
+
+        let result: ApplyResult?
+        if event.requiresFullReplay {
+            // A challenge changes a pitch that has already been folded in, so
+            // the log has to be re-read from the top.
+            let rebuilt = ScoringEngine.replayDetailed(document: document)
+            state = rebuilt.state
+            result = rebuilt.last
+        } else {
+            let applied = ScoringEngine.apply(event, to: state, document: document)
+            state = applied.state
+            result = applied
+        }
+
+        if let result {
+            lastHeadline = result.headline
+            if let appearance = result.plateAppearance {
+                lastPlateAppearance = appearance
+            }
+            announce(result)
         }
         redoStack.removeAll()
 
         updateAwaitingFlag(for: event)
-        announce(result)
         persist()
     }
 
@@ -125,6 +138,57 @@ final class GameStore {
 
     func substitute(_ substitution: Substitution) {
         record(.substitution(substitution))
+    }
+
+    // MARK: - Challenges
+
+    /// The call currently open to challenge, if any.
+    ///
+    /// A challenge has to be immediate, so this is only the pitch just thrown
+    /// — and only if it was the umpire's judgement on location and hasn't
+    /// already been challenged.
+    var challengeablePitch: Pitch? {
+        guard document.rules.usesChallenges, settings.trackChallenges else { return nil }
+
+        for recorded in document.events.reversed() {
+            switch recorded.event {
+            case .challenge:
+                // This pitch has had its review already.
+                return nil
+            case .pitch(let pitch):
+                return pitch.outcome.isChallengeable ? pitch : nil
+            default:
+                return nil
+            }
+        }
+        return nil
+    }
+
+    var challengesRemaining: SideValues<Int> { state.challengesRemaining }
+
+    /// The team a given challenger belongs to right now.
+    func challengingSide(for role: ChallengeRole) -> Side {
+        role.side(battingSide: state.battingSide)
+    }
+
+    func canChallenge(as role: ChallengeRole) -> Bool {
+        challengeablePitch != nil && state.challengesRemaining[challengingSide(for: role)] > 0
+    }
+
+    /// Who would most likely be challenging this call. A strike called on your
+    /// hitter is the batter's to contest; a ball called on your pitcher is the
+    /// battery's.
+    var suggestedChallengeRole: ChallengeRole {
+        challengeablePitch?.outcome == .calledStrike ? .batter : .catcher
+    }
+
+    func recordChallenge(role: ChallengeRole, result: ChallengeResult) {
+        guard let pitch = challengeablePitch else { return }
+        record(
+            .challenge(
+                Challenge(role: role, result: result, originalOutcome: pitch.outcome)
+            )
+        )
     }
 
     // MARK: - Undo / redo

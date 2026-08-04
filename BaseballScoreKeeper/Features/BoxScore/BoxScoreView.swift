@@ -16,6 +16,10 @@ struct BoxScoreView: View {
                         titleBlock
                         LineScoreTable(boxScore: boxScore)
 
+                        if !boxScore.challenges.isEmpty {
+                            challengeSection(boxScore: boxScore)
+                        }
+
                         if store.settings.trackBallLocation {
                             sprayChartSection
                         }
@@ -60,6 +64,53 @@ struct BoxScoreView: View {
         let date = store.document.startedAt.formatted(date: .abbreviated, time: .omitted)
         let venue = store.document.venue
         return venue.isEmpty ? date : "\(date) · \(venue)"
+    }
+
+    // MARK: - Challenges
+
+    private func challengeSection(boxScore: BoxScore) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("CHALLENGES")
+                .font(.system(size: 10, weight: .semibold, design: .rounded))
+                .tracking(1.2)
+                .foregroundStyle(Theme.secondaryText)
+
+            VStack(spacing: 0) {
+                ForEach(Side.allCases) { side in
+                    let record = boxScore.challengeRecord(for: side)
+                    HStack {
+                        Text(boxScore.teams[side].abbreviation)
+                            .font(Theme.Typeface.label(13, weight: .bold))
+                            .foregroundStyle(Theme.primaryText)
+                            .frame(width: 44, alignment: .leading)
+
+                        Text("\(record.won) of \(record.used) overturned")
+                            .font(Theme.Typeface.caption())
+                            .foregroundStyle(Theme.secondaryText)
+
+                        Spacer()
+
+                        ChallengePips(
+                            remaining: boxScore.challengesRemaining[side],
+                            total: max(boxScore.challengesRemaining[side], record.used)
+                        )
+                    }
+                    .padding(.horizontal, Theme.Metrics.cardPadding)
+                    .padding(.vertical, 8)
+
+                    Divider().overlay(Theme.hairline)
+                }
+
+                ForEach(boxScore.challenges) { challenge in
+                    ChallengeRow(
+                        challenge: challenge,
+                        team: boxScore.teams[challenge.side].abbreviation
+                    )
+                }
+            }
+            .padding(.vertical, 4)
+            .scorecardSurface()
+        }
     }
 
     // MARK: - Spray chart
@@ -127,6 +178,42 @@ struct BoxScoreView: View {
             .padding(.vertical, 4)
             .scorecardSurface()
         }
+    }
+}
+
+private struct ChallengeRow: View {
+    var challenge: ChallengeRecord
+    var team: String
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Text(challenge.inningLabel)
+                .font(.system(size: 10, weight: .semibold, design: .rounded))
+                .foregroundStyle(Theme.secondaryText)
+                .frame(width: 52, alignment: .leading)
+
+            VStack(alignment: .leading, spacing: 1) {
+                Text("\(team) \(challenge.role.label.lowercased())")
+                    .font(Theme.Typeface.label(12, weight: .semibold))
+                    .foregroundStyle(Theme.primaryText)
+                Text(challenge.summary)
+                    .font(.system(size: 10, weight: .regular, design: .rounded))
+                    .foregroundStyle(Theme.secondaryText)
+            }
+
+            Spacer()
+
+            Text(challenge.result == .overturned ? "WON" : "LOST")
+                .font(.system(size: 9, weight: .heavy, design: .rounded))
+                .foregroundStyle(.white)
+                .padding(.horizontal, 7)
+                .padding(.vertical, 3)
+                .background(
+                    Capsule().fill(challenge.result == .overturned ? Theme.ball : Theme.miss)
+                )
+        }
+        .padding(.horizontal, Theme.Metrics.cardPadding)
+        .padding(.vertical, 7)
     }
 }
 
