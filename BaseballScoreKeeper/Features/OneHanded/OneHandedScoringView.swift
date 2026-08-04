@@ -4,16 +4,28 @@ import SwiftUI
 /// in-play pad until a result is committed.
 private struct BallInPlayState {
     var isDialActive = false
+    /// The dial was opened by a tap and stays up until something is chosen,
+    /// rather than following a finger that's still down.
+    var isLatched = false
     var finger: CGPoint?
+    /// Whether the current drag has travelled far enough to be a drag at all.
+    /// A press that never moves is a tap, and a tap latches the dial.
+    var didMove = false
     var selection: Position?
     var pendingFielder: Position?
     var trajectory: Trajectory = .grounder
     var showsRing = false
 
-    mutating func reset() {
+    mutating func closeDial() {
         isDialActive = false
+        isLatched = false
         finger = nil
+        didMove = false
         selection = nil
+    }
+
+    mutating func reset() {
+        closeDial()
         pendingFielder = nil
         showsRing = false
     }
@@ -175,43 +187,29 @@ struct OneHandedScoringView: View {
         .frame(width: 300, height: 280, alignment: clusterAlignment)
     }
 
+    /// Ball left, strike right — the way the count is written. See
+    /// `PitchPadLayout` for why that mapping ignores handedness.
     private var pitchPad: some View {
         FlickPad(
-            title: "Ball",
+            title: "PITCH",
             diameter: Theme.Metrics.primaryPad,
-            options: pitchOptions,
+            options: PitchPadLayout.options,
+            holdOption: PitchPadLayout.holdOption,
+            holdDuration: PitchPadLayout.holdDuration,
+            showsDirectionHints: true,
             hapticsEnabled: settings.hapticsEnabled,
             onCommit: { direction in
-                guard let outcome = pitchOutcome(for: direction) else { return }
-                recordPitch(outcome)
+                guard let outcome = PitchPadLayout.outcome(for: direction) else { return }
+                if outcome == .inPlay {
+                    latchDialOpen()
+                } else {
+                    recordPitch(outcome)
+                }
+            },
+            onHold: {
+                recordPitch(PitchPadLayout.heldOutcome)
             }
         )
-    }
-
-    /// Ball rests under the thumb because it is the single most common pitch
-    /// outcome. Strikes are a flick up or outward, foul is down.
-    private var pitchOptions: [FlickDirection: FlickOption] {
-        let outward: FlickDirection = settings.handedness == .right ? .right : .left
-        let inward: FlickDirection = settings.handedness == .right ? .left : .right
-
-        return [
-            .center: FlickOption("Ball", tint: Theme.ball),
-            .up: FlickOption("Call", tint: Theme.calledStrike),
-            outward: FlickOption("Miss", tint: Theme.miss),
-            .down: FlickOption("Foul", tint: Theme.foul),
-            inward: FlickOption("HBP", tint: Theme.hitByPitch)
-        ]
-    }
-
-    private func pitchOutcome(for direction: FlickDirection) -> PitchOutcome? {
-        let outward: FlickDirection = settings.handedness == .right ? .right : .left
-
-        switch direction {
-        case .center: return .ball
-        case .up: return .calledStrike
-        case .down: return .foul
-        case .left, .right: return direction == outward ? .swingingStrike : .hitByPitch
-        }
     }
 
     private var inPlayPad: some View {
@@ -231,7 +229,7 @@ struct OneHandedScoringView: View {
         .gesture(inPlayGesture)
         .accessibilityElement()
         .accessibilityLabel(Text("Ball in play"))
-        .accessibilityHint(Text("Drag onto a fielder, then choose the result"))
+        .accessibilityHint(Text("Tap to open the fielder dial, or drag straight onto a fielder"))
         .accessibilityActions {
             ForEach(Position.fielders) { position in
                 Button(position.fullName) { beginResult(for: position) }
@@ -261,12 +259,18 @@ struct OneHandedScoringView: View {
     /// The dial deliberately does not fill the screen. It sits in the lower
     /// third, centred on where the thumb already is, because a field drawn up
     /// by the status bar would put centre field somewhere no thumb can reach.
+    /// The dial deliberately does not fill the screen. It sits in the lower
+    /// third, centred on where the thumb already is, because a field drawn up
+    /// by the status bar would put centre field somewhere no thumb can reach.
     private var dialOverlay: some View {
         ZStack(alignment: .bottom) {
-            Color.black.opacity(0.6).ignoresSafeArea()
+            Color.black.opacity(0.6)
+                .ignoresSafeArea()
+                .contentShape(Rectangle())
+                .onTapGesture { cancelDial() }
 
             VStack(spacing: 8) {
-                Text(flow.selection.map { "\($0.rawValue) · \($0.fullName)" } ?? "Slide to a fielder")
+                Text(dialTitle)
                     .font(Theme.Typeface.label(19, weight: .bold))
                     .foregroundStyle(.white)
                     .lineLimit(1)
@@ -275,11 +279,13 @@ struct OneHandedScoringView: View {
                     fingerLocation: flow.finger,
                     coordinateSpace: space,
                     hapticsEnabled: settings.hapticsEnabled,
-                    onSelectionChange: { flow.selection = $0 }
+                    isInteractive: flow.isLatched,
+                    onSelectionChange: { flow.selection = $0 },
+                    onTapPosition: { selectFromLatchedDial($0) }
                 )
                 .frame(height: 300)
 
-                Text("Release to score · drag away to cancel")
+                Text(dialHint)
                     .font(Theme.Typeface.caption())
                     .foregroundStyle(.white.opacity(0.65))
             }
@@ -287,8 +293,23 @@ struct OneHandedScoringView: View {
             .padding(.horizontal, 18)
             .padding(.bottom, 44)
         }
-        .allowsHitTesting(false)
+        // While a finger is still down the overlay must stay transparent to
+        // touches, or it would steal the drag from the in-play pad.
+        .allowsHitTesting(flow.isLatched)
         .transition(.opacity)
+    }
+
+    private var dialTitle: String {
+        if let selection = flow.selection {
+            return "\(selection.rawValue) · \(selection.fullName)"
+        }
+        return flow.isLatched ? "Who fielded it?" : "Slide to a fielder"
+    }
+
+    private var dialHint: String {
+        flow.isLatched
+            ? "Tap a fielder · tap anywhere else to cancel"
+            : "Release to score · drag away to cancel"
     }
 
     private var inPlayGesture: some Gesture {
@@ -296,23 +317,66 @@ struct OneHandedScoringView: View {
             .onChanged { value in
                 if !flow.isDialActive {
                     flow.isDialActive = true
+                    flow.isLatched = false
+                    flow.didMove = false
                     Haptics.shared.tap(enabled: settings.hapticsEnabled)
+                }
+                let travel = (
+                    value.translation.width * value.translation.width
+                        + value.translation.height * value.translation.height
+                ).squareRoot()
+                if travel > 8 {
+                    flow.didMove = true
                 }
                 flow.finger = value.location
             }
             .onEnded { _ in
                 let fielder = flow.selection
-                flow.isDialActive = false
-                flow.finger = nil
-                flow.selection = nil
+                let moved = flow.didMove
+                flow.closeDial()
 
-                guard let fielder else {
-                    Haptics.shared.cancelled(enabled: settings.hapticsEnabled)
+                if let fielder {
+                    Haptics.shared.commit(enabled: settings.hapticsEnabled)
+                    beginResult(for: fielder)
                     return
                 }
-                Haptics.shared.commit(enabled: settings.hapticsEnabled)
-                beginResult(for: fielder)
+
+                // A press that never moved is a tap: leave the dial up so it
+                // can be answered with a second, deliberate tap.
+                if !moved {
+                    latchDialOpen()
+                    return
+                }
+                Haptics.shared.cancelled(enabled: settings.hapticsEnabled)
             }
+    }
+
+    // MARK: - Dial modes
+
+    /// Opens the dial and leaves it up. Nothing is recorded yet — a stray tap
+    /// costs a dismissal, not an undo.
+    private func latchDialOpen() {
+        Haptics.shared.tap(enabled: settings.hapticsEnabled)
+        withAnimation(.easeOut(duration: 0.16)) {
+            flow.isDialActive = true
+            flow.isLatched = true
+        }
+        flow.finger = nil
+        flow.selection = nil
+        flow.didMove = false
+    }
+
+    private func selectFromLatchedDial(_ position: Position) {
+        flow.closeDial()
+        beginResult(for: position)
+    }
+
+    private func cancelDial() {
+        guard flow.isLatched else { return }
+        Haptics.shared.cancelled(enabled: settings.hapticsEnabled)
+        withAnimation(.easeOut(duration: 0.16)) {
+            flow.closeDial()
+        }
     }
 
     // MARK: - Committing

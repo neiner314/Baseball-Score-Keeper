@@ -52,6 +52,18 @@ final class Haptics {
         softGenerator.impactOccurred(intensity: 0.5)
     }
 
+    /// A press-and-hold has armed. Deliberately a double thump — nothing else
+    /// in the vocabulary feels like this, because the thing about to be
+    /// recorded is one you'd hate to record by accident.
+    func holdArmed(enabled: Bool) {
+        guard enabled else { return }
+        rigidGenerator.impactOccurred(intensity: 1.0)
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 90_000_000)
+            rigidGenerator.impactOccurred(intensity: 0.7)
+        }
+    }
+
     /// Distinct confirmation per outcome, so the pocket-scoring case still
     /// tells you what you just recorded.
     func feedback(for result: ApplyResult, enabled: Bool) {

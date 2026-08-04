@@ -17,28 +17,53 @@ out around your thumb, slide toward one and lift.
 ```
                       ↑ Call (called strike)
                       │
-   HBP ←────────  ● Ball  ────────→ Miss (swinging)
+  Ball ←────────  ● tap = in play  ────────→ Miss (swinging)
                       │
                       ↓ Foul
+
+              press and hold  =  hit by pitch
 ```
 
-- **Tap** the pitch pad for a **ball** — the most common single outcome, so it
-  costs no travel at all.
-- **Flick up** for a called strike, **outward** for a swinging strike,
-  **down** for a foul, **inward** for a hit-by-pitch.
+**Balls flick left, strikes flick right**, the way a count is written and read
+everywhere in baseball — a full count is 3-2, not 2-3. Called strike is up and
+foul is down, so ball is the only leftward gesture on the pad and everything
+else is a strike.
+
+That mapping is deliberately **not** mirrored for left-handed scorers. The
+cluster moves to whichever corner your thumb lives in, but ball stays left and
+strike stays right for everyone, because the gesture stands in for the
+scoreboard, not for the hand.
+
+- **Tap** = the ball was put in play (see below).
+- **Press and hold** ≈ half a second = hit by pitch. It's rare, it ends the
+  plate appearance, and undoing one you triggered by accident is exactly the
+  interruption this app exists to avoid — so it's on a gesture you can't
+  stumble into. The pad fills a ring the whole time you hold, turns purple,
+  and double-thumps when it arms; sliding away at any point disarms it and
+  hands the gesture back to the flick directions.
 - Flicking to a direction with nothing on it **cancels**, so a fumbled drag
   costs nothing.
-- Everything is mirrored for left thumbs in Settings.
+- At rest the pad wears four small dots in the flick colors on its rim, so the
+  mapping is readable before you ever press it.
 
 ### Ball in play — the fielder dial
 
-Press the **IN PLAY** pad and drag. A full-screen field appears under your
-thumb with all nine positions laid out where they actually stand, so "it went
-to left" is a drag toward the upper left rather than a menu item to hunt for.
-Each position you cross ticks. Release on one and a result ring appears
-centred where your thumb already is, with **OUT** directly under it — the
-common case is a tap with no travel, and 1B / 2B / 3B / HR / E / FC / DP fan
-out around it.
+Two ways in, the same duality iOS menus have:
+
+- **Tap** — either the pitch pad or the **IN PLAY** pad. The dial latches open
+  and waits for a second, deliberate tap on a fielder. Nothing is written
+  until you pick one, so a stray tap costs a dismissal rather than an undo.
+- **Press the IN PLAY pad and drag** — the dial tracks your finger. Release on
+  whoever is lit.
+
+Either way a field appears in the lower third of the screen, inside the thumb's
+arc, with all nine positions laid out where they actually stand — so "it went
+to left" is a move toward the upper left rather than a menu item to hunt for.
+Each position you cross ticks.
+
+Then a result ring appears centred where your thumb already is, with **OUT**
+directly under it — the common case is a tap with no travel — and 1B / 2B / 3B
+/ HR / E / FC / DP fanned around it.
 
 Turn on **"Dial releases straight to an out"** in Settings and the ring is
 skipped entirely: drag, release, done.
@@ -110,10 +135,11 @@ xcodebuild test -scheme BaseballScoreKeeper \
   -destination 'platform=iOS Simulator,name=iPhone 16'
 ```
 
-Roughly 60 tests cover the engine (count handling, forced advancement, the
+Roughly 75 tests cover the engine (count handling, forced advancement, the
 third-out rule that cancels runs, earned vs. unearned runs, walk-offs, extra
 innings, substitutions), scorebook notation, the box score and decision
-assignment, and the flick-direction and dial hit-testing maths.
+assignment, the flick-direction and dial hit-testing maths, and the pitch pad
+mapping — including that hit-by-pitch is unreachable by any flick.
 
 ## Known simplifications
 

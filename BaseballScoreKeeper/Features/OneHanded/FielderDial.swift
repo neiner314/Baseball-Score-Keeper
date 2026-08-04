@@ -2,16 +2,27 @@ import SwiftUI
 
 /// The no-look fielder dial.
 ///
-/// Dragged out of the in-play pad, it puts all nine positions on a drawn
-/// field under your thumb. Sliding between them ticks; the selected position
-/// is announced in type large enough to read at a glance, and the whole thing
-/// is laid out the way the field looks, so "the ball went to left" is a flick
-/// toward the upper left rather than a menu item to find.
+/// It puts all nine positions on a drawn field under your thumb. Sliding
+/// between them ticks; the selected position is announced in type large enough
+/// to read at a glance, and the whole thing is laid out the way the field
+/// looks, so "the ball went to left" is a flick toward the upper left rather
+/// than a menu item to find.
+///
+/// Two ways in. Drag out of the in-play pad and the dial tracks your finger,
+/// releasing on whoever is lit. Or tap, and the dial latches open for a
+/// second, deliberate tap — the same tap-or-drag duality iOS menus have.
 struct FielderDial: View {
     var fingerLocation: CGPoint?
     var coordinateSpace: String
     var hapticsEnabled: Bool
+    /// When true the markers are tappable. Used by the latched (tapped-open)
+    /// presentation; the drag presentation stays hit-testing-transparent so
+    /// the in-play pad keeps receiving the gesture.
+    var isInteractive: Bool = false
+    /// Reports the live drag selection, including nil when the finger moves
+    /// clear of every position — that's how a drag is cancelled.
     var onSelectionChange: (Position?) -> Void
+    var onTapPosition: ((Position) -> Void)?
 
     @State private var selection: Position?
 
@@ -76,10 +87,10 @@ struct FielderDial: View {
             BasePathsShape()
                 .stroke(Color.white.opacity(0.35), lineWidth: 1.5)
 
-            if let selection, let target = selectedPoint(selection, size: size) {
+            if let selection, size.width > 0 {
                 Path { path in
                     path.move(to: FieldGeometry.homePlate(in: size))
-                    path.addLine(to: target)
+                    path.addLine(to: FieldGeometry.point(for: selection, in: size))
                 }
                 .stroke(
                     Theme.inPlay,
@@ -87,11 +98,7 @@ struct FielderDial: View {
                 )
             }
         }
-    }
-
-    private func selectedPoint(_ position: Position, size: CGSize) -> CGPoint? {
-        guard size.width > 0 else { return nil }
-        return FieldGeometry.point(for: position, in: size)
+        .allowsHitTesting(false)
     }
 
     // MARK: - Position markers
@@ -103,6 +110,13 @@ struct FielderDial: View {
                     position: position,
                     isSelected: selection == position
                 )
+                .contentShape(Circle())
+                .onTapGesture {
+                    guard isInteractive else { return }
+                    selection = position
+                    Haptics.shared.commit(enabled: hapticsEnabled)
+                    onTapPosition?(position)
+                }
                 .position(FieldGeometry.point(for: position, in: size))
             }
         }
@@ -112,6 +126,10 @@ struct FielderDial: View {
 private struct FielderMarker: View {
     var position: Position
     var isSelected: Bool
+
+    /// Fixed outer frame so the tap target stays a comfortable size whether or
+    /// not the marker is currently enlarged.
+    private let tapTarget: CGFloat = 66
 
     var body: some View {
         ZStack {
@@ -131,6 +149,9 @@ private struct FielderMarker: View {
                 }
             }
         }
+        .frame(width: tapTarget, height: tapTarget)
         .animation(.spring(response: 0.2, dampingFraction: 0.7), value: isSelected)
+        .accessibilityElement()
+        .accessibilityLabel(Text("\(position.rawValue), \(position.fullName)"))
     }
 }
