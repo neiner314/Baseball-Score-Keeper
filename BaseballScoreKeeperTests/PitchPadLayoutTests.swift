@@ -25,11 +25,29 @@ final class PitchPadLayoutTests: XCTestCase {
         XCTAssertEqual(PitchPadLayout.outcome(for: .right)?.countsAsBall, false)
     }
 
+    /// Up traces where a tipped ball actually goes — up and back over the
+    /// catcher. Down is the ball settling into the zone untouched.
+    func testVerticalAxisFollowsTheBall() {
+        XCTAssertEqual(PitchPadLayout.outcome(for: .up), .foul)
+        XCTAssertEqual(PitchPadLayout.outcome(for: .down), .calledStrike)
+    }
+
     func testBothVerticalFlicksAreStrikes() {
-        XCTAssertEqual(PitchPadLayout.outcome(for: .up), .calledStrike)
-        XCTAssertEqual(PitchPadLayout.outcome(for: .down), .foul)
         XCTAssertEqual(PitchPadLayout.outcome(for: .up)?.isStrike, true)
         XCTAssertEqual(PitchPadLayout.outcome(for: .down)?.isStrike, true)
+    }
+
+    /// The four flicks are the four things a pitch can do, each exactly once.
+    func testEveryFlickIsADistinctOutcome() {
+        let outcomes = [FlickDirection.up, .down, .left, .right]
+            .compactMap { PitchPadLayout.outcome(for: $0) }
+
+        XCTAssertEqual(outcomes.count, 4)
+        XCTAssertEqual(Set(outcomes).count, 4, "no two flicks may record the same thing")
+        XCTAssertEqual(
+            Set(outcomes),
+            [.ball, .calledStrike, .swingingStrike, .foul]
+        )
     }
 
     /// Ball is the only gesture on the pad that adds to the balls column, so
@@ -97,8 +115,8 @@ final class PitchPadLayoutTests: XCTestCase {
     func testOptionLabelsMatchTheOutcomes() {
         XCTAssertEqual(PitchPadLayout.options[.left]?.title, "Ball")
         XCTAssertEqual(PitchPadLayout.options[.right]?.title, "Miss")
-        XCTAssertEqual(PitchPadLayout.options[.up]?.title, "Call")
-        XCTAssertEqual(PitchPadLayout.options[.down]?.title, "Foul")
+        XCTAssertEqual(PitchPadLayout.options[.up]?.title, "Foul")
+        XCTAssertEqual(PitchPadLayout.options[.down]?.title, "Call")
         XCTAssertEqual(PitchPadLayout.options[.center]?.title, "In Play")
         XCTAssertEqual(PitchPadLayout.holdOption.title, "HBP")
     }

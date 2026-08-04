@@ -11,6 +11,19 @@ import SwiftUI
 /// stays left and strike stays right for everyone, because the gesture is
 /// standing in for the scoreboard, not for the hand.
 ///
+/// The vertical axis is mimetic rather than notational. Foul is **up**,
+/// because a tipped ball flies up and back over the catcher — the flick
+/// traces where the ball actually went. Called strike is **down**: nothing
+/// moved, the ball simply settled in the zone.
+///
+/// Read together the four flicks are the four things a pitch can do, which is
+/// what makes them recallable without looking:
+///
+/// - left, ball — no swing, out of the zone
+/// - down, called strike — no swing, in the zone
+/// - right, swinging strike — swung and missed
+/// - up, foul — swung and caught a piece of it
+///
 /// Hit-by-pitch is not on any flick. It is a press-and-hold, because it is
 /// rare, it ends the plate appearance, and recording one by accident means
 /// noticing and undoing it — the exact thing this app is supposed to avoid.
@@ -23,8 +36,8 @@ enum PitchPadLayout {
         switch direction {
         case .left: .ball
         case .right: .swingingStrike
-        case .up: .calledStrike
-        case .down: .foul
+        case .up: .foul
+        case .down: .calledStrike
         case .center: .inPlay
         }
     }
@@ -36,8 +49,8 @@ enum PitchPadLayout {
         [
             .left: FlickOption("Ball", tint: Theme.ball),
             .right: FlickOption("Miss", tint: Theme.miss),
-            .up: FlickOption("Call", tint: Theme.calledStrike),
-            .down: FlickOption("Foul", tint: Theme.foul),
+            .up: FlickOption("Foul", tint: Theme.foul),
+            .down: FlickOption("Call", tint: Theme.calledStrike),
             .center: FlickOption("In Play", tint: Theme.inPlay)
         ]
     }

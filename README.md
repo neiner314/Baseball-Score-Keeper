@@ -15,19 +15,33 @@ flick-input idea from Japanese smartphone keyboards: press a key, options fan
 out around your thumb, slide toward one and lift.
 
 ```
-                      ↑ Call (called strike)
+                      ↑ Foul (tipped up and back)
                       │
   Ball ←────────  ● tap = in play  ────────→ Miss (swinging)
                       │
-                      ↓ Foul
+                      ↓ Call (called strike)
 
               press and hold  =  hit by pitch
 ```
 
 **Balls flick left, strikes flick right**, the way a count is written and read
-everywhere in baseball — a full count is 3-2, not 2-3. Called strike is up and
-foul is down, so ball is the only leftward gesture on the pad and everything
-else is a strike.
+everywhere in baseball — a full count is 3-2, not 2-3. Ball is the only
+leftward gesture on the pad; everything else is a strike.
+
+The vertical axis is mimetic rather than notational. **Foul is up**, because a
+tipped ball flies up and back over the catcher — the flick traces where the
+ball actually went. **Called strike is down**: nothing moved, the ball just
+settled in the zone.
+
+Together the four flicks are the four things a pitch can do, which is what
+makes them recallable without looking:
+
+| Flick | Outcome | |
+| --- | --- | --- |
+| ← | Ball | no swing, out of the zone |
+| ↓ | Called strike | no swing, in the zone |
+| → | Swinging strike | swung and missed |
+| ↑ | Foul | swung and caught a piece of it |
 
 That mapping is deliberately **not** mirrored for left-handed scorers. The
 cluster moves to whichever corner your thumb lives in, but ball stays left and
