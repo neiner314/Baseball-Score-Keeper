@@ -731,12 +731,13 @@ enum ScoringEngine {
         }
         working.ensureLineScoreDepth()
 
-        // Reaching extra innings hands a challenge back to anyone who has run
-        // out. Fires exactly once, on the way into the first extra inning.
-        if !working.hasGrantedExtraInningsChallenges,
+        // Every extra inning, a team that has run out is topped back up to one,
+        // so both sides always have a challenge available in extras. It repeats
+        // each inning rather than being a single grant, and it does not
+        // accumulate — a team that still holds one gets nothing extra.
+        if working.half == .top,
            working.inning > document.rules.regulationInnings,
            document.rules.usesChallenges {
-            working.hasGrantedExtraInningsChallenges = true
             let grant = document.rules.extraInningsChallengeGrant
             if grant > 0 {
                 for side in Side.allCases where working.challengesRemaining[side] == 0 {

@@ -64,6 +64,15 @@ struct GameDriver {
         )
     }
 
+    /// Burns both of the away team's challenges on failed reviews.
+    mutating func spendAwayChallenges() {
+        while state.challengesRemaining.away > 0 {
+            if state.half != .top { retireSide() }
+            pitch(.calledStrike)
+            challenge(role: .batter, result: .stands, original: .calledStrike)
+        }
+    }
+
     /// Four balls.
     mutating func walk() {
         for _ in 0..<4 { pitch(.ball) }

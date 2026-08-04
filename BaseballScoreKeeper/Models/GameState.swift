@@ -254,8 +254,9 @@ struct GameRules: Codable, Hashable, Sendable {
     var challengesPerTeam: Int = 2
     /// A team that wins its challenge isn't charged for it.
     var challengeRetainedWhenOverturned: Bool = true
-    /// Challenges handed to a team that has none left once the game reaches
-    /// extra innings.
+    /// Topped back up to this at the start of every extra inning, for any team
+    /// that has run out. Does not accumulate, and a team still holding one
+    /// gets nothing extra.
     var extraInningsChallengeGrant: Int = 1
 
     var usesChallenges: Bool { challengesPerTeam > 0 }
@@ -308,8 +309,6 @@ struct GameState: Codable, Hashable, Sendable {
     var phantomOuts: Int = 0
     /// Ball-strike challenges each team has left.
     var challengesRemaining = SideValues(repeating: 0)
-    /// Guards the one-time extra-innings replenishment.
-    var hasGrantedExtraInningsChallenges = false
 
     init(lineups: SideValues<LineupState>) {
         self.lineups = lineups

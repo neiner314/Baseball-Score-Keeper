@@ -152,16 +152,50 @@ final class ChallengeTests: XCTestCase {
 
     func testExhaustedTeamsGetOneBackInExtraInnings() {
         var driver = GameDriver()
-        driver.pitch(.calledStrike)
-        driver.challenge(role: .batter, result: .stands, original: .calledStrike)
-        driver.pitch(.calledStrike)
-        driver.challenge(role: .batter, result: .stands, original: .calledStrike)
+        driver.spendAwayChallenges()
         XCTAssertEqual(driver.state.challengesRemaining.away, 0)
 
         driver.advance(toInning: 10, half: .top)
 
         XCTAssertEqual(driver.state.challengesRemaining.away, 1, "spent team is topped up")
         XCTAssertEqual(driver.state.challengesRemaining.home, 2, "a team with some left keeps what it had")
+    }
+
+    /// The top-up repeats: a team that runs out again in the tenth is back to
+    /// one for the eleventh, so neither side is ever without a challenge in
+    /// extras.
+    func testTheTopUpHappensEveryExtraInning() {
+        var driver = GameDriver()
+        driver.spendAwayChallenges()
+        driver.advance(toInning: 10, half: .top)
+        XCTAssertEqual(driver.state.challengesRemaining.away, 1)
+
+        // Burn the replacement in the tenth.
+        driver.pitch(.calledStrike)
+        driver.challenge(role: .batter, result: .stands, original: .calledStrike)
+        XCTAssertEqual(driver.state.challengesRemaining.away, 0)
+
+        driver.advance(toInning: 11, half: .top)
+        XCTAssertEqual(driver.state.challengesRemaining.away, 1, "topped up again for the eleventh")
+    }
+
+    /// It doesn't stack. A team still holding a challenge gets nothing extra.
+    func testTheTopUpDoesNotAccumulate() {
+        var driver = GameDriver()
+        driver.advance(toInning: 12, half: .top)
+
+        XCTAssertEqual(driver.state.challengesRemaining.away, 2, "never spent one, so still two")
+        XCTAssertEqual(driver.state.challengesRemaining.home, 2)
+    }
+
+    func testATeamDownToOneIsNotToppedUp() {
+        var driver = GameDriver()
+        driver.pitch(.calledStrike)
+        driver.challenge(role: .batter, result: .stands, original: .calledStrike)
+        XCTAssertEqual(driver.state.challengesRemaining.away, 1)
+
+        driver.advance(toInning: 10, half: .top)
+        XCTAssertEqual(driver.state.challengesRemaining.away, 1, "one in hand is not topped back to two")
     }
 
     // MARK: - Marking the pitch

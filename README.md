@@ -110,8 +110,10 @@ correction that's at stake, e.g. `Called strike → Ball`.
 
 The challenging team is derived from who asked: the batter challenges for the
 side at bat, the pitcher and catcher for the side in the field. Each team
-starts with two, and any team that has run out gets one back on reaching extra
-innings.
+starts with two. In extra innings any team that has run out is topped back up
+to one at the start of every inning — it repeats each frame, it doesn't
+accumulate, and a team still holding a challenge gets nothing extra, so both
+sides always have exactly one available.
 
 **A won challenge really does rewind the game.** Win one on ball four and the
 walk un-happens — the runner comes off first, the same batter is back up, and
@@ -212,9 +214,10 @@ Deliberate v1 choices, all overridable by the scorer:
   requirement for a starter, and the standard save conditions. Unusual cases —
   a scorer's discretionary win between two equally effective relievers — may
   need a manual correction.
-- **Challenge rules** are configurable in `GameRules` because leagues differ:
-  `challengesPerTeam` (2), `challengeRetainedWhenOverturned` (true) and
-  `extraInningsChallengeGrant` (1 to any team that has run out). Set
+- **Challenge rules** follow MLB's 2026 ABS system and are configurable in
+  `GameRules` because leagues differ: `challengesPerTeam` (2),
+  `challengeRetainedWhenOverturned` (true) and `extraInningsChallengeGrant`
+  (1, applied each extra inning to any team that has run out). Set
   `challengesPerTeam` to 0, or turn the setting off, for leagues that don't
   review calls at all. A challenge is only allowed against the pitch it
   immediately follows, which is both the rule and what keeps the correction
