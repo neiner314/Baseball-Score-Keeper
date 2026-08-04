@@ -11,16 +11,29 @@ struct NewGameView: View {
     @State private var usesDH = true
     @State private var regulationInnings = 9
     @State private var settings = AppPreferences.defaultTrackingSettings
+    @State private var showsGameImport = false
+    @State private var importingSide: Side?
+    @State private var importedSetup: RemoteGameSetup?
 
     var body: some View {
         NavigationStack {
             Form {
+                Section {
+                    Button {
+                        showsGameImport = true
+                    } label: {
+                        Label("Import a game", systemImage: "arrow.down.circle")
+                    }
+                } footer: {
+                    Text(importFooter)
+                }
+
                 Section("Teams") {
                     TeamFields(roster: $away, label: "Away")
                     TeamFields(roster: $home, label: "Home")
                 }
 
-                Section("Lineups") {
+                Section {
                     NavigationLink {
                         RosterEditorView(roster: $away)
                     } label: {
@@ -31,6 +44,20 @@ struct NewGameView: View {
                     } label: {
                         LabeledContent(home.name, value: "\(home.players.count) players")
                     }
+                    Button {
+                        importingSide = .away
+                    } label: {
+                        Label("Paste \(away.name) roster", systemImage: "doc.on.clipboard")
+                    }
+                    Button {
+                        importingSide = .home
+                    } label: {
+                        Label("Paste \(home.name) roster", systemImage: "doc.on.clipboard")
+                    }
+                } header: {
+                    Text("Lineups")
+                } footer: {
+                    Text("Pasting works for any league — one line per player as number, name, position.")
                 }
 
                 Section("Rules") {
@@ -63,13 +90,50 @@ struct NewGameView: View {
                     Button("Start") { start() }
                 }
             }
+            .sheet(isPresented: $showsGameImport) {
+                GameImportView { setup in
+                    apply(setup)
+                }
+            }
+            .sheet(item: $importingSide) { side in
+                RosterImportView(teamLabel: side == .away ? "away roster" : "home roster") { roster in
+                    switch side {
+                    case .away: away = roster
+                    case .home: home = roster
+                    }
+                }
+            }
         }
+    }
+
+    private var importFooter: String {
+        if let importedSetup {
+            let lineups = importedSetup.lineups == nil
+                ? "Lineups aren't posted yet — rosters are in, pick the nine below."
+                : "Rosters and the posted lineup are in."
+            return "Imported \(importedSetup.game.title). \(lineups)"
+        }
+        return "Pull rosters and the posted lineup from the league feed. MLB only — see the importer for why."
+    }
+
+    private func apply(_ setup: RemoteGameSetup) {
+        importedSetup = setup
+        away = setup.teams.away
+        home = setup.teams.home
+        if !setup.venue.isEmpty { venue = setup.venue }
     }
 
     private func start() {
         var rules = GameRules.standard
         rules.usesDesignatedHitter = usesDH
         rules.regulationInnings = regulationInnings
+
+        // An imported game keeps its provenance so the official scoring can be
+        // fetched back later, and keeps the posted lineup if there was one.
+        if let importedSetup, importedSetup.teams.away == away, importedSetup.teams.home == home {
+            onStart(GameFactory.game(from: importedSetup, rules: rules, settings: settings))
+            return
+        }
 
         onStart(
             GameFactory.newGame(

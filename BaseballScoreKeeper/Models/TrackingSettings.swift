@@ -131,6 +131,11 @@ struct GameDocument: Identifiable, Codable, Hashable, Sendable {
     var settings: TrackingSettings
     var startingLineups: SideValues<LineupState>
     var events: [RecordedEvent]
+    /// Set when the game was imported. Optional so older saves still decode
+    /// and so a hand-entered game simply has no provenance.
+    var league: League?
+    /// The game's id in the league's feed, used to fetch official scoring back.
+    var externalGameID: String?
 
     init(
         id: UUID = UUID(),
@@ -140,7 +145,9 @@ struct GameDocument: Identifiable, Codable, Hashable, Sendable {
         rules: GameRules = .standard,
         settings: TrackingSettings = .default,
         startingLineups: SideValues<LineupState>,
-        events: [RecordedEvent] = []
+        events: [RecordedEvent] = [],
+        league: League? = nil,
+        externalGameID: String? = nil
     ) {
         self.id = id
         self.startedAt = startedAt
@@ -150,6 +157,14 @@ struct GameDocument: Identifiable, Codable, Hashable, Sendable {
         self.settings = settings
         self.startingLineups = startingLineups
         self.events = events
+        self.league = league
+        self.externalGameID = externalGameID
+    }
+
+    /// Whether this game can be checked against the league's official scoring.
+    var supportsAccuracyCheck: Bool {
+        guard let league, let externalGameID, !externalGameID.isEmpty else { return false }
+        return league.hasOfficialScoring
     }
 
     var title: String {

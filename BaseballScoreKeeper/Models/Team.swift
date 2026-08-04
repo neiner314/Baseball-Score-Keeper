@@ -103,6 +103,9 @@ struct Player: Identifiable, Codable, Hashable, Sendable {
     var primaryPosition: Position
     var bats: BatterSide
     var throwsWith: Handedness
+    /// The id this player carries in whatever league feed they came from.
+    /// Kept so the official scoring can be matched back to them.
+    var externalID: String?
 
     init(
         id: UUID = UUID(),
@@ -110,7 +113,8 @@ struct Player: Identifiable, Codable, Hashable, Sendable {
         name: String,
         primaryPosition: Position,
         bats: BatterSide = .right,
-        throwsWith: Handedness = .right
+        throwsWith: Handedness = .right,
+        externalID: String? = nil
     ) {
         self.id = id
         self.number = number
@@ -118,6 +122,7 @@ struct Player: Identifiable, Codable, Hashable, Sendable {
         self.primaryPosition = primaryPosition
         self.bats = bats
         self.throwsWith = throwsWith
+        self.externalID = externalID
     }
 
     /// "Chisholm Jr." — the surname portion, used in the dense box score rows.
@@ -138,8 +143,20 @@ struct TeamRoster: Codable, Hashable, Sendable {
     var name: String
     var abbreviation: String
     var players: [Player]
+    var externalID: String?
+
+    init(name: String, abbreviation: String, players: [Player], externalID: String? = nil) {
+        self.name = name
+        self.abbreviation = abbreviation
+        self.players = players
+        self.externalID = externalID
+    }
 
     func player(id: UUID) -> Player? {
         players.first { $0.id == id }
+    }
+
+    func player(externalID: String) -> Player? {
+        players.first { $0.externalID == externalID }
     }
 }

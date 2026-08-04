@@ -11,6 +11,7 @@ struct ScoringContainerView: View {
     @State private var showsBoxScore = false
     @State private var showsSettings = false
     @State private var showsSubstitution = false
+    @State private var showsAccuracy = false
 
     var body: some View {
         ZStack(alignment: .top) {
@@ -32,6 +33,9 @@ struct ScoringContainerView: View {
         }
         .sheet(isPresented: $showsSubstitution) {
             SubstitutionView(defaultSide: store.state.fieldingSide).environment(store)
+        }
+        .sheet(isPresented: $showsAccuracy) {
+            AccuracyReportView().environment(store)
         }
     }
 
@@ -69,6 +73,15 @@ struct ScoringContainerView: View {
                 Image(systemName: "list.number")
             }
             .accessibilityLabel(Text("Box score"))
+
+            if store.document.supportsAccuracyCheck {
+                Button {
+                    showsAccuracy = true
+                } label: {
+                    Image(systemName: "checkmark.seal")
+                }
+                .accessibilityLabel(Text("Compare with official scoring"))
+            }
 
             Button {
                 showsSettings = true

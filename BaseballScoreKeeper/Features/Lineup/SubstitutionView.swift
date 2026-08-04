@@ -22,8 +22,15 @@ struct SubstitutionView: View {
     private var lineup: LineupState { store.state.lineups[side] }
     private var roster: TeamRoster { store.teams[side] }
 
+    /// Anyone who hasn't appeared yet — a player who has left can't come back.
+    /// A pitching change narrows it to pitchers, which is the whole point of
+    /// importing a roster: pick the arm, don't type the name.
     private var availablePlayers: [Player] {
-        roster.players.filter { !lineup.appearedPlayerIDs.contains($0.id) }
+        let unused = roster.players.filter { !lineup.appearedPlayerIDs.contains($0.id) }
+        guard kind == .pitchingChange else { return unused }
+
+        let pitchers = unused.filter { $0.primaryPosition == .pitcher }
+        return pitchers.isEmpty ? unused : pitchers
     }
 
     var body: some View {
@@ -45,7 +52,7 @@ struct SubstitutionView: View {
                     }
                 }
 
-                Section("Coming in") {
+                Section {
                     if availablePlayers.isEmpty {
                         Text("No one left on the bench")
                             .foregroundStyle(.secondary)
@@ -53,10 +60,15 @@ struct SubstitutionView: View {
                         Picker("Player", selection: $incomingID) {
                             Text("Select").tag(UUID?.none)
                             ForEach(availablePlayers) { player in
-                                Text("\(player.displayNumber) \(player.name)").tag(UUID?.some(player.id))
+                                Text("\(player.displayNumber) \(player.name) · \(player.primaryPosition.abbreviation)")
+                                    .tag(UUID?.some(player.id))
                             }
                         }
                     }
+                } header: {
+                    Text("Coming in")
+                } footer: {
+                    Text("\(availablePlayers.count) available\(kind == .pitchingChange ? " · pitchers only" : "")")
                 }
 
                 if kind != .pitchingChange {

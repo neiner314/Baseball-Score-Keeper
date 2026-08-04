@@ -109,17 +109,42 @@ enum GameFactory {
         home: TeamRoster,
         venue: String = "",
         rules: GameRules = .standard,
-        settings: TrackingSettings = .default
+        settings: TrackingSettings = .default,
+        league: League? = nil,
+        externalGameID: String? = nil,
+        lineups: SideValues<LineupState>? = nil
     ) -> GameDocument {
         GameDocument(
             venue: venue,
             teams: SideValues(away: away, home: home),
             rules: rules,
             settings: settings,
-            startingLineups: SideValues(
+            startingLineups: lineups ?? SideValues(
                 away: makeLineup(roster: away, usesDH: rules.usesDesignatedHitter),
                 home: makeLineup(roster: home, usesDH: rules.usesDesignatedHitter)
-            )
+            ),
+            league: league,
+            externalGameID: externalGameID
+        )
+    }
+
+    /// Builds a scoreable game straight out of an imported setup. When the
+    /// lineup card hasn't been posted yet, the roster is still imported and a
+    /// provisional nine is picked, which the scorer can fix before first pitch.
+    static func game(
+        from setup: RemoteGameSetup,
+        rules: GameRules = .standard,
+        settings: TrackingSettings = .default
+    ) -> GameDocument {
+        GameFactory.newGame(
+            away: setup.teams.away,
+            home: setup.teams.home,
+            venue: setup.venue,
+            rules: rules,
+            settings: settings,
+            league: setup.game.league,
+            externalGameID: setup.game.id,
+            lineups: setup.lineups
         )
     }
 

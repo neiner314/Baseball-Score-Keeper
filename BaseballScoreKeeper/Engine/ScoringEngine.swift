@@ -101,6 +101,22 @@ enum ScoringEngine {
         return (state, last)
     }
 
+    /// Every completed plate appearance, in order. What the accuracy check
+    /// diffs against the league's official scoring.
+    static func plateAppearances(document: GameDocument) -> [PlateAppearanceResult] {
+        var state = initialState(document: document)
+        var appearances: [PlateAppearanceResult] = []
+
+        for recorded in resolved(document.events) {
+            let result = apply(recorded.event, to: state, document: document)
+            state = result.state
+            if let appearance = result.plateAppearance {
+                appearances.append(appearance)
+            }
+        }
+        return appearances
+    }
+
     // MARK: - Challenge resolution
 
     /// Rewrites the log so that a won challenge changes the call it was made

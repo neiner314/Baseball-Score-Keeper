@@ -123,6 +123,56 @@ ball into strike three and the strikeout is recorded. Corrected pitches keep a
 flag in the sequence strip so the change is visible rather than silent, and the
 box score lists every challenge with who made it, when, and whether it was won.
 
+## Importing rosters and lineups
+
+Typing twenty-six names before first pitch is the worst part of scorekeeping,
+so **New Game → Import a game** pulls both rosters and the posted lineup off
+the league feed. After that a pinch runner or a pitching change is picking a
+name off a list — a pitching change narrows the list to pitchers, because
+that's the only thing you're choosing between.
+
+Where the data comes from, honestly:
+
+| League | Rosters & lineups | Official scoring |
+| --- | --- | --- |
+| **MLB** | Live, from MLB's public Stats API — no key, no account | Yes |
+| **NPB** | Paste a roster file | No |
+| **KBO** | Paste a roster file | No |
+| Anything else | Paste a roster file | No |
+
+**Only MLB publishes a free feed.** NPB and the KBO put rosters on the web but
+not behind an API — there are community scrapers and paid commercial feeds,
+neither of which belongs baked into an app like this. So those leagues import
+from text instead: one line per player as `number, name, position`, pasted
+once per team and reusable all season. It's two minutes of copy-paste against
+a lifetime of typing lineups, and it doesn't break when someone's website
+changes.
+
+MLB data usage is subject to
+[MLB's copyright notice](http://gdx.mlb.com/components/copyright.txt), which
+permits individual, non-commercial use. Fine for keeping score; not fine for
+shipping commercially without their written permission.
+
+## Checking yourself against the official scorer
+
+For an imported MLB game, the seal button pulls the official play-by-play back
+and diffs it against what you scored:
+
+```
+                    94%
+          47 of 50 plays match
+
+  Top 4   Chisholm Jr.
+          You scored single; official is error
+          Chisholm Jr. reaches on a fielding error by the shortstop.
+```
+
+It compares the *call*, not the paperwork — hit versus error versus fielder's
+choice, and RBI counts. Disagreeing about whether the chain was 6-3 or 6-4-3
+isn't interesting; disagreeing about whether that was a hit is. Plays are
+aligned within each half-inning, so one missed play throws off that half and
+nothing after it, and anything you missed or invented is called out as such.
+
 ## The other two layouts
 
 Cycle between layouts with the top-left button, or set a default in Settings.
@@ -163,10 +213,17 @@ The engine handles a full game, not just the count:
 ```
 Models/    Plain value types — no UI, nothing beyond Foundation
 Engine/    ScoringEngine, BoxScoreBuilder, Notation — pure functions
+League/    Roster providers, league feeds, file import
+Verify/    Official-scoring comparison
 Store/     GameStore (the only mutable thing) + file persistence
 Design/    Theme, Haptics, Announcer, field geometry
 Features/  One directory per screen
 ```
+
+`RosterProvider` is a protocol with one conformance today. A league with no
+API is a *missing conformance*, not a special case threaded through the app —
+which is why NPB and the KBO cost nothing to support badly now and will cost
+one file to support properly if a feed ever appears.
 
 The engine is a **pure function of an append-only event log**. The UI never
 edits game state; it appends events, and state is whatever the log adds up to.
@@ -189,13 +246,21 @@ xcodebuild test -scheme BaseballScoreKeeper \
   -destination 'platform=iOS Simulator,name=iPhone 16'
 ```
 
-Roughly 100 tests cover the engine (count handling, forced advancement, the
+Roughly 145 tests cover the engine (count handling, forced advancement, the
 third-out rule that cancels runs, earned vs. unearned runs, walk-offs, extra
 innings, substitutions), scorebook notation, the box score and decision
 assignment, the flick-direction and dial hit-testing maths, the pitch pad
 mapping — including that hit-by-pitch is unreachable by any flick — and
 challenges, including a won challenge on ball four unwalking the batter and on
-strike three erasing the out.
+strike three erasing the out. The import layer is covered at its pure edges:
+roster-file parsing, position-code mapping, play-by-play mapping, and the
+official-scoring diff.
+
+**The network calls themselves are not covered, and have never run.** The
+container this was built in blocks `statsapi.mlb.com` at the egress proxy, so
+every MLB request path is written from community documentation and has never
+touched the real API. The field shapes are the thing most likely to be wrong:
+run one import against a live game before trusting it.
 
 ## Known simplifications
 
