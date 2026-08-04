@@ -258,9 +258,17 @@ official-scoring diff.
 
 **The network calls themselves are not covered, and have never run.** The
 container this was built in blocks `statsapi.mlb.com` at the egress proxy, so
-every MLB request path is written from community documentation and has never
-touched the real API. The field shapes are the thing most likely to be wrong:
-run one import against a live game before trusting it.
+every MLB request path has never touched the real API. Field shapes were
+written from community documentation and then cross-checked field-by-field
+against [python-mlb-statsapi](https://github.com/zero-sum-seattle/python-mlb-statsapi)'s
+typed models, which agree on the play-by-play and boxscore structures.
+
+The two sources *disagree* about whether a few values are strings or numbers
+(jersey numbers, position codes, batting-order slots). Since `decodeIfPresent`
+throws on a type mismatch rather than yielding nil, guessing wrong would fail
+an entire boxscore rather than drop one field — so those decode from either,
+via `MLBStatsDTO.LooseString`. Still: run one import against a live game before
+trusting any of it.
 
 ## Known simplifications
 

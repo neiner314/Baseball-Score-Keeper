@@ -121,6 +121,85 @@ final class LeagueTests: XCTestCase {
     }
 }
 
+final class MLBStatsDecodingTests: XCTestCase {
+
+    /// The feed's own JSON quotes these values; typed wrappers around the same
+    /// API model some of them as integers. Whichever is right, decoding has to
+    /// survive both — a type mismatch throws rather than yielding nil, so
+    /// guessing wrong would fail the whole boxscore rather than one field.
+    func testLooseStringDecodesFromAQuotedValue() throws {
+        let json = Data(#"{"jerseyNumber":"17","battingOrder":"100"}"#.utf8)
+        let player = try JSONDecoder().decode(MLBStatsDTO.BoxscorePlayer.self, from: json)
+
+        XCTAssertEqual(player.jerseyNumber?.value, "17")
+        XCTAssertEqual(player.battingOrder?.value, "100")
+    }
+
+    func testLooseStringDecodesFromANumber() throws {
+        let json = Data(#"{"jerseyNumber":17,"battingOrder":100}"#.utf8)
+        let player = try JSONDecoder().decode(MLBStatsDTO.BoxscorePlayer.self, from: json)
+
+        XCTAssertEqual(player.jerseyNumber?.value, "17")
+        XCTAssertEqual(player.battingOrder?.value, "100")
+    }
+
+    func testPositionCodeSurvivesEitherRepresentation() throws {
+        let quoted = Data(#"{"position":{"code":"6","abbreviation":"SS"}}"#.utf8)
+        let numeric = Data(#"{"position":{"code":6,"abbreviation":"SS"}}"#.utf8)
+
+        let a = try JSONDecoder().decode(MLBStatsDTO.BoxscorePlayer.self, from: quoted)
+        let b = try JSONDecoder().decode(MLBStatsDTO.BoxscorePlayer.self, from: numeric)
+
+        XCTAssertEqual(Position(mlbCode: a.position?.code?.value, abbreviation: nil), .shortstop)
+        XCTAssertEqual(Position(mlbCode: b.position?.code?.value, abbreviation: nil), .shortstop)
+    }
+
+    func testMissingOptionalFieldsDecodeToNil() throws {
+        let json = Data(#"{"person":{"id":1,"fullName":"Someone"}}"#.utf8)
+        let player = try JSONDecoder().decode(MLBStatsDTO.BoxscorePlayer.self, from: json)
+
+        XCTAssertNil(player.jerseyNumber)
+        XCTAssertNil(player.battingOrder)
+        XCTAssertEqual(player.person?.fullName, "Someone")
+    }
+
+    /// The team-level batting order is an array of person ids — that's what the
+    /// lineup is actually built from.
+    func testBoxscoreTeamDecodesTheBattingOrder() throws {
+        let json = Data(#"""
+        {"team":{"id":147,"name":"New York Yankees","abbreviation":"NYY"},
+         "battingOrder":[665862,592450],
+         "pitchers":[543037],
+         "players":{"ID665862":{"person":{"id":665862,"fullName":"Jazz Chisholm Jr."},
+                                "jerseyNumber":"13",
+                                "position":{"code":"4","abbreviation":"2B"}}}}
+        """#.utf8)
+
+        let team = try JSONDecoder().decode(MLBStatsDTO.BoxscoreTeam.self, from: json)
+
+        XCTAssertEqual(team.battingOrder, [665862, 592450])
+        XCTAssertEqual(team.pitchers, [543037])
+        XCTAssertEqual(team.team?.abbreviation, "NYY")
+        XCTAssertEqual(team.players?["ID665862"]?.person?.fullName, "Jazz Chisholm Jr.")
+        XCTAssertEqual(
+            Position(
+                mlbCode: team.players?["ID665862"]?.position?.code?.value,
+                abbreviation: nil
+            ),
+            .secondBase
+        )
+    }
+
+    /// An unexpected shape yields an empty value rather than throwing, so one
+    /// odd field can't take the import down with it.
+    func testUnexpectedShapeDegradesToEmpty() throws {
+        let json = Data(#"{"jerseyNumber":{"nested":true}}"#.utf8)
+        let player = try JSONDecoder().decode(MLBStatsDTO.BoxscorePlayer.self, from: json)
+
+        XCTAssertEqual(player.jerseyNumber?.value, "")
+    }
+}
+
 final class MLBStatsMappingTests: XCTestCase {
 
     func testPositionCodesMapToScorebookNumbers() {

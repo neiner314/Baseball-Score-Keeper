@@ -7,9 +7,11 @@ import Foundation
 /// non-commercial use — fine for keeping score, not for shipping commercially
 /// without their written permission.
 ///
-/// Field shapes here are drawn from community documentation rather than a
-/// published schema, which is why every DTO field is optional and every
-/// mapping degrades instead of throwing.
+/// Field shapes here are drawn from community documentation and cross-checked
+/// against a typed Python wrapper's models rather than a published schema,
+/// which is why every DTO field is optional and every mapping degrades instead
+/// of throwing. The two sources disagree about whether a few values are
+/// strings or numbers — see `MLBStatsDTO.LooseString`.
 struct MLBStatsProvider: RosterProvider, OfficialScoringProvider {
     var league: League { .mlb }
 
@@ -158,10 +160,10 @@ struct MLBStatsProvider: RosterProvider, OfficialScoringProvider {
 
             players.append(
                 Player(
-                    number: entry.jerseyNumber ?? entry.person?.primaryNumber ?? "",
+                    number: entry.jerseyNumber?.value ?? entry.person?.primaryNumber?.value ?? "",
                     name: name,
                     primaryPosition: Position(
-                        mlbCode: entry.position?.code,
+                        mlbCode: entry.position?.code?.value,
                         abbreviation: entry.position?.abbreviation
                     ) ?? .designatedHitter,
                     externalID: externalID
@@ -179,10 +181,10 @@ struct MLBStatsProvider: RosterProvider, OfficialScoringProvider {
 
             players.append(
                 Player(
-                    number: entry.jerseyNumber ?? entry.person?.primaryNumber ?? "",
+                    number: entry.jerseyNumber?.value ?? entry.person?.primaryNumber?.value ?? "",
                     name: name,
                     primaryPosition: Position(
-                        mlbCode: entry.position?.code,
+                        mlbCode: entry.position?.code?.value,
                         abbreviation: entry.position?.abbreviation
                     ) ?? .designatedHitter,
                     externalID: externalID
@@ -214,7 +216,7 @@ struct MLBStatsProvider: RosterProvider, OfficialScoringProvider {
             guard let player = roster.player(externalID: String(personID)) else { continue }
             let entry = box.players?["ID\(personID)"]
             let position = Position(
-                mlbCode: entry?.position?.code,
+                mlbCode: entry?.position?.code?.value,
                 abbreviation: entry?.position?.abbreviation
             ) ?? player.primaryPosition
 

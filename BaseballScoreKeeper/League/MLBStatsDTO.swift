@@ -9,6 +9,36 @@ enum MLBStatsDTO {
 
     // MARK: Shared
 
+    /// A value the feed sometimes sends as a string and sometimes as a number.
+    ///
+    /// Jersey numbers, position codes and batting-order slots are all written
+    /// as quoted strings in the raw JSON, but typed wrappers around this API
+    /// model some of them as integers — so at least one of the two is coercing,
+    /// and it isn't clear which. `decodeIfPresent` throws on a type mismatch
+    /// rather than returning nil, so guessing wrong wouldn't drop a field, it
+    /// would fail the entire boxscore. Accepting both costs nothing.
+    struct LooseString: Decodable, Hashable, Sendable {
+        var value: String
+
+        init(_ value: String) {
+            self.value = value
+        }
+
+        init(from decoder: Decoder) throws {
+            let container = try decoder.singleValueContainer()
+
+            if let string = try? container.decode(String.self) {
+                value = string
+            } else if let int = try? container.decode(Int.self) {
+                value = String(int)
+            } else if let double = try? container.decode(Double.self) {
+                value = String(Int(double))
+            } else {
+                value = ""
+            }
+        }
+    }
+
     struct NamedEntity: Decodable, Sendable {
         var id: Int?
         var name: String?
@@ -18,7 +48,7 @@ enum MLBStatsDTO {
     }
 
     struct PositionDTO: Decodable, Sendable {
-        var code: String?
+        var code: LooseString?
         var name: String?
         var type: String?
         var abbreviation: String?
@@ -27,7 +57,7 @@ enum MLBStatsDTO {
     struct PersonDTO: Decodable, Sendable {
         var id: Int?
         var fullName: String?
-        var primaryNumber: String?
+        var primaryNumber: LooseString?
     }
 
     // MARK: Schedule
@@ -88,10 +118,10 @@ enum MLBStatsDTO {
 
     struct BoxscorePlayer: Decodable, Sendable {
         var person: PersonDTO?
-        var jerseyNumber: String?
+        var jerseyNumber: LooseString?
         var position: PositionDTO?
         /// "100" is the first slot's starter, "101" the first substitute in it.
-        var battingOrder: String?
+        var battingOrder: LooseString?
     }
 
     // MARK: Roster
@@ -102,7 +132,7 @@ enum MLBStatsDTO {
 
     struct RosterEntry: Decodable, Sendable {
         var person: PersonDTO?
-        var jerseyNumber: String?
+        var jerseyNumber: LooseString?
         var position: PositionDTO?
     }
 
