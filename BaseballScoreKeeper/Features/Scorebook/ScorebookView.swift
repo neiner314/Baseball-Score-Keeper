@@ -30,7 +30,7 @@ struct ScorebookView: View {
                     teamAbbreviation: store.teams[side].abbreviation
                 )
             }
-            .background(Theme.background)
+            .appBackground()
             .navigationTitle("Scorebook")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -260,8 +260,11 @@ struct ScorebookBox: View {
                 .foregroundStyle(textTint)
                 .lineLimit(1)
                 .minimumScaleFactor(0.6)
-                .padding(.horizontal, 3)
-                .background(Theme.background.opacity(0.8))
+                .padding(.horizontal, 4)
+                .padding(.vertical, 1)
+                // A flat translucent backing, not a material: this is drawn
+                // once per box and a full page has ninety of them.
+                .background(Theme.controlBody, in: Capsule())
         }
         .overlay(alignment: .topLeading) {
             if let outNumber = cell.outNumber {
@@ -346,7 +349,7 @@ private struct ScorebookCellDetail: View {
         }
         .padding(22)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Theme.background)
+        .appBackground()
     }
 
     private func detailRow(_ label: String, _ value: String) -> some View {

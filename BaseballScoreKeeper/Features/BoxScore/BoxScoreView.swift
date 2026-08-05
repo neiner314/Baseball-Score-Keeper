@@ -35,7 +35,7 @@ struct BoxScoreView: View {
                         .padding(.top, 60)
                 }
             }
-            .background(Theme.background)
+            .appBackground()
             .navigationTitle("Box Score")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

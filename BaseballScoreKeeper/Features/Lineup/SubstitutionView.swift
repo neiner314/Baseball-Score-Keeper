@@ -102,7 +102,7 @@ struct SubstitutionView: View {
                 }
             }
             .scrollContentBackground(.hidden)
-            .background(Theme.background)
+            .appBackground()
             .navigationTitle("Substitution")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

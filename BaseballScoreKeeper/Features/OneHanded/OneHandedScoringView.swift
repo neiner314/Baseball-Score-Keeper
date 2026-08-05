@@ -56,7 +56,7 @@ struct OneHandedScoringView: View {
 
     var body: some View {
         ZStack(alignment: clusterAlignment) {
-            Theme.background.ignoresSafeArea()
+            AppBackground()
 
             readout
 
@@ -100,7 +100,19 @@ struct OneHandedScoringView: View {
 
     // MARK: - Read-only top half
 
+    /// The line score is the nicest thing on the screen and the first thing to
+    /// go: on a short phone the pads matter more than the arc of the game.
+    /// `ViewThatFits` picks whichever version actually clears the cluster.
     private var readout: some View {
+        ViewThatFits(in: .vertical) {
+            readoutStack(showsLineScore: true)
+            readoutStack(showsLineScore: false)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .animation(.easeOut(duration: 0.2), value: store.lastHeadline)
+    }
+
+    private func readoutStack(showsLineScore: Bool) -> some View {
         VStack(spacing: 10) {
             ScoreBar(state: store.state, teams: store.teams)
 
@@ -117,13 +129,15 @@ struct OneHandedScoringView: View {
 
             Spacer(minLength: 0)
 
+            if showsLineScore {
+                LineScoreRibbon(state: store.state, teams: store.teams)
+            }
+
             detailRail
         }
         .padding(.horizontal, Theme.Metrics.screenMargin)
         .padding(.top, 6)
-        .padding(.bottom, 296)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .animation(.easeOut(duration: 0.2), value: store.lastHeadline)
+        .padding(.bottom, 292)
     }
 
     /// Only on screen while the call is actually reviewable, which is the rule
@@ -184,8 +198,7 @@ struct OneHandedScoringView: View {
                     .foregroundStyle(railIsSet ? Theme.accent : Theme.tertiaryText)
                     .padding(.horizontal, 11)
                     .padding(.vertical, 7)
-                    .background(Capsule().fill(Theme.surface))
-                    .overlay(Capsule().strokeBorder(Theme.hairline, lineWidth: 1))
+                    .luminousCapsule(railIsSet ? Theme.accent : Theme.neutral, isProminent: railIsSet)
                 }
                 .buttonStyle(.plain)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -251,16 +264,12 @@ struct OneHandedScoringView: View {
     }
 
     private var inPlayPad: some View {
-        ZStack {
-            Circle()
-                .fill(Theme.inPlay.opacity(flow.isDialActive ? 0.34 : 0.14))
-                .overlay(Circle().strokeBorder(Theme.inPlay, lineWidth: 2))
-            Text("IN\nPLAY")
-                .font(Theme.Typeface.label(13, weight: .bold))
-                .multilineTextAlignment(.center)
-                .foregroundStyle(Theme.inPlay)
-        }
-        .frame(width: Theme.Metrics.secondaryPad, height: Theme.Metrics.secondaryPad)
+        Text("IN\nPLAY")
+            .font(Theme.Typeface.label(13, weight: .bold))
+            .multilineTextAlignment(.center)
+            .foregroundStyle(Theme.inPlay)
+            .frame(width: Theme.Metrics.secondaryPad, height: Theme.Metrics.secondaryPad)
+            .luminousCircle(Theme.inPlay, isProminent: flow.isDialActive)
         .scaleEffect(flow.isDialActive ? 1.1 : 1)
         .animation(.spring(response: 0.2, dampingFraction: 0.7), value: flow.isDialActive)
         .contentShape(Circle())
@@ -282,10 +291,9 @@ struct OneHandedScoringView: View {
         } label: {
             Image(systemName: "arrow.uturn.backward")
                 .font(.system(size: 18, weight: .bold))
-                .foregroundStyle(Theme.primaryText)
+                .foregroundStyle(Theme.secondaryText)
                 .frame(width: 52, height: 52)
-                .background(Circle().fill(Theme.surfaceRaised))
-                .overlay(Circle().strokeBorder(Theme.hairline, lineWidth: 1))
+                .luminousCircle(Theme.neutral)
         }
         .buttonStyle(.plain)
         .disabled(!store.canUndo)
@@ -383,9 +391,10 @@ struct OneHandedScoringView: View {
                 .foregroundStyle(.white)
                 .frame(maxWidth: .infinity)
                 .frame(height: 52)
-                .background(
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .fill(flow.chain.isEmpty ? Theme.hitByPitch : Theme.accent)
+                .luminousFill(
+                    flow.chain.isEmpty ? Theme.hitByPitch : Theme.accent,
+                    cornerRadius: 16,
+                    isProminent: true
                 )
             }
             .buttonStyle(.plain)
@@ -573,14 +582,13 @@ struct QuickChipRow<Value: Hashable>: View {
                             Text(item.0)
                                 .font(Theme.Typeface.label(13, weight: .semibold))
                                 .foregroundStyle(
-                                    selection == item.1 ? Theme.background : Theme.secondaryText
+                                    selection == item.1 ? Theme.accent : Theme.secondaryText
                                 )
                                 .padding(.horizontal, 12)
                                 .padding(.vertical, 7)
-                                .background(
-                                    Capsule().fill(
-                                        selection == item.1 ? Theme.accent : Theme.surfaceRaised
-                                    )
+                                .luminousCapsule(
+                                    selection == item.1 ? Theme.accent : Theme.neutral,
+                                    isProminent: selection == item.1
                                 )
                         }
                         .buttonStyle(.plain)

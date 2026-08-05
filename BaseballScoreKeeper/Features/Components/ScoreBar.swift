@@ -35,21 +35,27 @@ struct ScoreBar: View {
         .scorecardSurface()
     }
 
-    /// The batting side is the bright one — that alone tells you the half
-    /// without reading the inning.
+    /// The batting side is the lit one — a dot beside it and a faint bloom on
+    /// the number. That alone tells you the half without reading the inning.
     private func teamRow(_ side: Side) -> some View {
         let isBatting = state.battingSide == side && !state.isFinal
-        return HStack(spacing: 8) {
+        return HStack(spacing: 7) {
+            Circle()
+                .fill(isBatting ? Theme.accent : Color.clear)
+                .frame(width: 5, height: 5)
+                .glow(isBatting ? Theme.accent : .clear, radius: 5, opacity: 0.9)
+
             Text(teams[side].abbreviation)
                 .font(Theme.Typeface.label(15, weight: .heavy))
                 .foregroundStyle(isBatting ? Theme.primaryText : Theme.secondaryText)
-                .frame(width: 44, alignment: .leading)
+                .frame(width: 42, alignment: .leading)
 
             Text("\(state.runs(for: side))")
-                .font(Theme.Typeface.display(30))
+                .font(Theme.Typeface.display(34))
                 .foregroundStyle(isBatting ? Theme.primaryText : Theme.secondaryText)
+                .glow(isBatting ? Color.white : .clear, radius: 14, opacity: 0.25)
                 .contentTransition(.numericText())
-                .animation(.easeOut(duration: 0.2), value: state.runs(for: side))
+                .animation(.easeOut(duration: 0.25), value: state.runs(for: side))
         }
         .accessibilityElement(children: .combine)
     }
@@ -143,9 +149,9 @@ struct PitchMark: View {
         VStack(spacing: 2) {
             Text(pitch.outcome.mark)
                 .font(Theme.Typeface.label(11, weight: .heavy))
-                .foregroundStyle(.white)
-                .frame(width: 22, height: 22)
-                .background(Circle().fill(Theme.color(for: pitch.outcome)))
+                .foregroundStyle(Theme.color(for: pitch.outcome))
+                .frame(width: 24, height: 24)
+                .luminousCircle(Theme.color(for: pitch.outcome))
                 // A reviewed call carries a flag, so a corrected mark never
                 // looks like it was simply entered that way.
                 .overlay(alignment: .topTrailing) {

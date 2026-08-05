@@ -35,7 +35,7 @@ struct AccuracyReportView: View {
                     )
                 }
             }
-            .background(Theme.background)
+            .appBackground()
             .navigationTitle("Accuracy")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

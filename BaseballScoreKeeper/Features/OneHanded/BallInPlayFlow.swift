@@ -280,9 +280,9 @@ private struct ChoiceButton: View {
         Button(action: action) {
             Text(choice.title)
                 .font(Theme.Typeface.label(isPrimary ? 20 : 15, weight: .heavy))
-                .foregroundStyle(.white)
+                .foregroundStyle(isPrimary ? .white : choice.tint)
                 .frame(width: isPrimary ? 84 : 56, height: isPrimary ? 84 : 56)
-                .background(Circle().fill(choice.tint))
+                .luminousCircle(choice.tint, isProminent: isPrimary)
                 .shadow(color: .black.opacity(0.45), radius: 8, y: 3)
         }
         .buttonStyle(.plain)

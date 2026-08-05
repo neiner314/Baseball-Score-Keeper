@@ -32,7 +32,7 @@ struct RootView: View {
             } else {
                 ProgressView()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .background(Theme.background)
+                    .appBackground()
             }
         }
         .preferredColorScheme(appearance.colorScheme)

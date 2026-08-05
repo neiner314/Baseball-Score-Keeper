@@ -25,7 +25,7 @@ struct ScoringContainerView: View {
                 finalBanner
             }
         }
-        .background(Theme.background)
+        .appBackground()
         .sheet(isPresented: $showsScorebook) {
             ScorebookView().environment(store)
         }

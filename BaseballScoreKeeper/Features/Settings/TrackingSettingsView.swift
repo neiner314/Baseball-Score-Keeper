@@ -130,7 +130,7 @@ struct TrackingSettingsView: View {
                 .padding(.horizontal, Theme.Metrics.screenMargin)
                 .padding(.vertical, 16)
             }
-            .background(Theme.background)
+            .appBackground()
             .navigationTitle("Settings")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

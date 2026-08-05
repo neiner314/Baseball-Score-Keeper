@@ -36,7 +36,7 @@ struct FullSheetScoringView: View {
         .padding(.horizontal, 12)
         .padding(.bottom, 6)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .background(Theme.background)
+        .appBackground()
         .overlay {
             if showsChallengeSheet, let pitch = store.challengeablePitch {
                 ChallengeSheet(
@@ -175,18 +175,16 @@ struct FullSheetScoringView: View {
     }
 
     private func pitchButton(_ outcome: PitchOutcome) -> some View {
-        Button {
+        let tint = Theme.color(for: outcome)
+        return Button {
             record(pitch: outcome)
         } label: {
             Text(outcome.shortLabel)
                 .font(Theme.Typeface.label(15, weight: .heavy))
-                .foregroundStyle(.white)
+                .foregroundStyle(tint)
                 .frame(maxWidth: .infinity)
-                .frame(height: 42)
-                .background(
-                    RoundedRectangle(cornerRadius: 11, style: .continuous)
-                        .fill(Theme.color(for: outcome))
-                )
+                .frame(height: 44)
+                .luminousFill(tint, cornerRadius: 13)
         }
         .buttonStyle(.plain)
     }
@@ -310,28 +308,24 @@ struct FullSheetScoringView: View {
         } label: {
             Text(choice.title)
                 .font(Theme.Typeface.label(14, weight: .heavy))
-                .foregroundStyle(.white)
+                .foregroundStyle(enabled ? choice.tint : Theme.tertiaryText)
                 .frame(maxWidth: .infinity)
                 .frame(height: 40)
-                .background(
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .fill(choice.tint.opacity(enabled ? 1 : 0.22))
-                )
+                .luminousFill(enabled ? choice.tint : Theme.neutral.opacity(0.4), cornerRadius: 11)
         }
         .buttonStyle(.plain)
         .disabled(!enabled)
+        .opacity(enabled ? 1 : 0.5)
     }
 
     private func directButton(_ title: String, tint: Color, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Text(title)
                 .font(Theme.Typeface.label(14, weight: .heavy))
-                .foregroundStyle(.white)
+                .foregroundStyle(tint)
                 .frame(maxWidth: .infinity)
                 .frame(height: 40)
-                .background(
-                    RoundedRectangle(cornerRadius: 10, style: .continuous).fill(tint)
-                )
+                .luminousFill(tint, cornerRadius: 11)
         }
         .buttonStyle(.plain)
     }
@@ -403,9 +397,9 @@ struct FullSheetScoringView: View {
             Text(title)
                 .font(Theme.Typeface.label(12, weight: .bold))
                 .foregroundStyle(tint)
-                .padding(.horizontal, 10)
+                .padding(.horizontal, 11)
                 .frame(height: 30)
-                .background(Capsule().fill(Theme.surfaceRaised))
+                .luminousCapsule(tint)
         }
         .buttonStyle(.plain)
         .accessibilityLabel(Text(label))
@@ -425,10 +419,10 @@ struct FullSheetScoringView: View {
                 Image(systemName: "chevron.up.chevron.down")
                     .font(.system(size: 8, weight: .bold))
             }
-            .foregroundStyle(isSet ? Theme.background : Theme.secondaryText)
+            .foregroundStyle(isSet ? Theme.accent : Theme.secondaryText)
             .padding(.horizontal, 10)
             .frame(height: 30)
-            .background(Capsule().fill(isSet ? Theme.accent : Theme.surfaceRaised))
+            .luminousCapsule(isSet ? Theme.accent : Theme.neutral, isProminent: isSet)
         }
     }
 

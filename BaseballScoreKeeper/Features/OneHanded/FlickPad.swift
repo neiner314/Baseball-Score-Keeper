@@ -118,9 +118,11 @@ struct FlickPad: View {
     private var padSurface: some View {
         ZStack {
             Circle()
-                .fill(padFill)
-                .overlay(Circle().strokeBorder(padStroke, lineWidth: 2))
-                .shadow(color: .black.opacity(isPressing ? 0.35 : 0.2), radius: isPressing ? 14 : 8, y: 4)
+                .fill(Theme.controlBody)
+                .overlay(Circle().fill(padFill))
+                .overlay(Circle().strokeBorder(padStroke, lineWidth: 1.5))
+                .shadow(color: .black.opacity(0.35), radius: 12, y: 5)
+                .glow(padStroke, radius: isPressing ? 20 : 12, opacity: isPressing ? 0.6 : 0.35)
 
             if showsDirectionHints && !isPressing {
                 hintDots
@@ -142,9 +144,9 @@ struct FlickPad: View {
 
     private var padFill: Color {
         if isHoldArmed {
-            return holdOption?.tint ?? Theme.hitByPitch
+            return (holdOption?.tint ?? Theme.hitByPitch).opacity(0.75)
         }
-        return (restingOption?.tint ?? Theme.neutral).opacity(0.20)
+        return (restingOption?.tint ?? Theme.neutral).opacity(0.22)
     }
 
     private var padStroke: Color {
@@ -312,14 +314,16 @@ private struct FlickChip: View {
             .foregroundStyle(isActive ? .white : option.tint)
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
-            .background(
-                Capsule().fill(isActive ? option.tint : Theme.surfaceRaised)
-            )
+            .background {
+                Capsule().fill(Theme.controlBody)
+                    .overlay(Capsule().fill(option.tint.opacity(isActive ? 0.9 : 0.18)))
+            }
             .overlay(
                 Capsule().strokeBorder(option.tint.opacity(isActive ? 0 : 0.6), lineWidth: 1.5)
             )
             .scaleEffect(isActive ? 1.14 : 1)
             .shadow(color: .black.opacity(0.3), radius: 6, y: 2)
+            .glow(option.tint, radius: isActive ? 16 : 0, opacity: isActive ? 0.7 : 0)
             .animation(.spring(response: 0.18, dampingFraction: 0.7), value: isActive)
     }
 }

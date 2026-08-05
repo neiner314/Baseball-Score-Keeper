@@ -100,7 +100,7 @@ struct NewGameView: View {
                 .padding(.horizontal, Theme.Metrics.screenMargin)
                 .padding(.bottom, 32)
             }
-            .background(Theme.background)
+            .appBackground()
             .navigationBarTitleDisplayMode(.inline)
             .sheet(isPresented: $showsGameImport) {
                 GameImportView { setup in
@@ -368,7 +368,7 @@ struct RosterEditorView: View {
             .listRowBackground(Theme.surface)
         }
         .scrollContentBackground(.hidden)
-        .background(Theme.background)
+        .appBackground()
         .navigationTitle(roster.name)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar { EditButton() }

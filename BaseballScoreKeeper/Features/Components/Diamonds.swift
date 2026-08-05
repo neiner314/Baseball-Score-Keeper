@@ -42,18 +42,33 @@ struct BaseDiamond: View {
         .stroke(Theme.hairline, lineWidth: 1)
     }
 
+    /// An occupied base is lit from inside — a bright core, a soft halo, and a
+    /// rim. Empty bases are a thin outline and nothing else, so a full glance
+    /// costs no reading at all.
     private func base(_ base: Base, at unit: CGPoint) -> some View {
         let occupied = bases[base] != nil
-        return RoundedRectangle(cornerRadius: 2, style: .continuous)
-            .fill(occupied ? Theme.ball : Color.clear)
-            .overlay(
-                RoundedRectangle(cornerRadius: 2, style: .continuous)
-                    .strokeBorder(occupied ? Theme.ball : Theme.secondaryText.opacity(0.45), lineWidth: 1.5)
-            )
-            .frame(width: baseSize, height: baseSize)
-            .rotationEffect(.degrees(45))
-            .shadow(color: occupied ? Theme.ball.opacity(0.5) : .clear, radius: 6)
-            .position(point(unit))
+        return ZStack {
+            if occupied {
+                RoundedRectangle(cornerRadius: 3, style: .continuous)
+                    .fill(Theme.ball)
+                    .frame(width: baseSize, height: baseSize)
+                    .blur(radius: baseSize * 0.42)
+                    .opacity(0.85)
+            }
+
+            RoundedRectangle(cornerRadius: 3, style: .continuous)
+                .fill(occupied ? Theme.ball : Color.clear)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 3, style: .continuous)
+                        .strokeBorder(
+                            occupied ? Color.white.opacity(0.85) : Theme.secondaryText.opacity(0.4),
+                            lineWidth: occupied ? 1 : 1.5
+                        )
+                )
+                .frame(width: baseSize, height: baseSize)
+        }
+        .rotationEffect(.degrees(45))
+        .position(point(unit))
     }
 
     private var homePlate: some View {
@@ -148,14 +163,27 @@ struct OutsPips: View {
     var body: some View {
         HStack(spacing: 4) {
             ForEach(0..<3, id: \.self) { index in
-                Circle()
-                    .fill(index < outs ? Theme.miss : Theme.secondaryText.opacity(0.22))
-                    .frame(width: dotSize, height: dotSize)
+                Pip(isLit: index < outs, tint: Theme.miss, size: dotSize)
             }
         }
         .animation(.easeOut(duration: 0.15), value: outs)
         .accessibilityElement()
         .accessibilityLabel(Text("\(outs) out"))
+    }
+}
+
+/// A count light. Lit ones bloom; unlit ones are barely there. Same idea as the
+/// bases — the state should be readable without counting.
+struct Pip: View {
+    var isLit: Bool
+    var tint: Color
+    var size: CGFloat
+
+    var body: some View {
+        Circle()
+            .fill(isLit ? tint : Theme.secondaryText.opacity(0.20))
+            .frame(width: size, height: size)
+            .glow(isLit ? tint : .clear, radius: size * 0.7, opacity: 0.8)
     }
 }
 
@@ -178,9 +206,7 @@ struct CountPips: View {
     private func pips(filled: Int, total: Int, tint: Color) -> some View {
         HStack(spacing: 4) {
             ForEach(0..<total, id: \.self) { index in
-                Circle()
-                    .fill(index < filled ? tint : Theme.secondaryText.opacity(0.22))
-                    .frame(width: dotSize, height: dotSize)
+                Pip(isLit: index < filled, tint: tint, size: dotSize)
             }
         }
         .animation(.easeOut(duration: 0.15), value: filled)

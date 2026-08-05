@@ -252,11 +252,35 @@ what's armed for the next pitch.
 
 ## Look
 
-Dark by default, and neutral on purpose: near-black greys with no tint, so the
-six action colors — ball, called strike, swinging strike, foul, in play, hit by
-pitch — are the only saturated things on screen. If everything is colorful,
-nothing reads at a glance. Light and System are both available under
-Settings → Appearance.
+Dark by default. Light and System are both available under Settings →
+Appearance.
+
+Three ideas carry it:
+
+**A lit ground.** Every screen sits on a night-sky gradient with a soft pool of
+light behind the scoreboard, rather than on flat black. Panels are frosted glass
+with an edge that catches the light at the top — which only works because
+there's something with depth underneath them.
+
+**Color as light, not paint.** The six action colors — ball, called strike,
+swinging strike, foul, in play, hit by pitch — are never a solid fill. Each
+control is a dark translucent body with a wash of its hue, a bright rim, bright
+text and a bloom underneath. Six saturated rectangles in a row read as a toy;
+the same six lit from within read as instruments, and the color still means what
+it meant. Occupied bases and lit count pips glow the same way, so a glance costs
+no reading at all.
+
+Only the big panels use a real `.ultraThinMaterial`. Controls use a translucent
+fill that looks identical over a smooth gradient — a screen can carry seventeen
+of them, and seventeen live blur passes is a real frame cost for an invisible
+difference.
+
+**Something worth looking at.** The live screen carries the line score inning by
+inning, with the half in progress lit and every inning that scored glowing. It's
+the one view that shows the game's whole arc, and it's the only thing on screen
+whose shape changes as the game goes on. On a short phone it's the first thing
+dropped — `ViewThatFits` picks the version that clears the thumb cluster,
+because the pads matter more than the arc.
 
 ## What it scores
 
