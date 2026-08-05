@@ -126,7 +126,17 @@ struct Player: Identifiable, Codable, Hashable, Sendable {
     }
 
     /// "Chisholm Jr." — the surname portion, used in the dense box score rows.
+    ///
+    /// Japanese names are written family-name-first ("大谷 翔平"), so their short
+    /// form is the *first* token, not the last. A name with any kana or kanji in
+    /// it is treated that way; everything else keeps the Western surname-last
+    /// rule, suffixes and all.
     var shortName: String {
+        if name.containsJapaneseScript {
+            let parts = name.split(whereSeparator: \.isWhitespace)
+            return parts.first.map(String.init) ?? name
+        }
+
         let parts = name.split(separator: " ")
         guard parts.count > 1 else { return name }
         let suffixes: Set<String> = ["Jr.", "Sr.", "II", "III", "IV"]
@@ -158,5 +168,25 @@ struct TeamRoster: Codable, Hashable, Sendable {
 
     func player(externalID: String) -> Player? {
         players.first { $0.externalID == externalID }
+    }
+}
+
+extension StringProtocol {
+    /// Whether the text contains any Japanese script — hiragana, katakana, or
+    /// CJK ideographs. Used to tell a Japanese name (family-name-first) from a
+    /// Western one so each is shortened the right way round.
+    var containsJapaneseScript: Bool {
+        unicodeScalars.contains { scalar in
+            switch scalar.value {
+            case 0x3040...0x309F,  // hiragana
+                 0x30A0...0x30FF,  // katakana
+                 0xFF66...0xFF9D,  // half-width katakana
+                 0x3400...0x4DBF,  // CJK ideographs, extension A
+                 0x4E00...0x9FFF:  // CJK unified ideographs
+                return true
+            default:
+                return false
+            }
+        }
     }
 }

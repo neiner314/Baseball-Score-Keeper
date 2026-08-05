@@ -21,6 +21,19 @@ final class GameStore {
     private var redoStack: [[RecordedEvent]] = []
     private var activeGroupID: UUID?
 
+    /// Real pitch mixes fetched from the league feed, keyed by player. Missing
+    /// until fetched (or forever, for a hand-entered game) — `arsenal(for:)`
+    /// falls back to a generic mix so the velocity pad always has labels.
+    private var arsenalCache: [UUID: [PitchType]] = [:]
+
+    /// Season hitting lines fetched from the league feed, keyed by player. Nil
+    /// for a player until fetched, and never populated for custom games.
+    private var seasonStatsCache: [UUID: SeasonHittingStats] = [:]
+    /// NPB's season line is aggregated once for the whole league from its
+    /// per-game files, then every batter is a dictionary lookup.
+    private var npbSeasonTable: [String: SeasonHittingStats]?
+    private var npbSeasonRequested = false
+
     var settings: TrackingSettings {
         get { document.settings }
         set {
@@ -48,12 +61,90 @@ final class GameStore {
         state.currentPitcherID.flatMap { document.player(id: $0) }
     }
 
+    /// The live pitching line for whoever is on the mound: innings, hits, runs,
+    /// walks, strikeouts and pitch count, all folded out of the event log the
+    /// same way the box score is. Nothing here is fetched — it's the scorer's
+    /// own numbers, so it works offline and for non-league games too.
+    var currentPitcherLine: PitchingLine? {
+        guard let pitcherID = state.currentPitcherID else { return nil }
+        return buildBoxScore().pitching[state.fieldingSide].first { $0.id == pitcherID }
+    }
+
+    /// The live batting line for the hitter at the plate — this game's average,
+    /// home runs, RBI and the rest — read out of the same box-score fold.
+    var currentBatterLine: BattingLine? {
+        guard let batterID = state.currentBatterID else { return nil }
+        return buildBoxScore().batting[state.battingSide].first { $0.id == batterID }
+    }
+
     var currentBatterPosition: Position? {
         guard let id = state.currentBatterID else { return nil }
         return state.battingLineup.slots.first { $0.playerID == id }?.position
     }
 
     func player(id: UUID) -> Player? { document.player(id: id) }
+
+    /// The pitch types to label the velocity pad with. The pitcher's real mix
+    /// once it's been fetched, otherwise a generic arsenal so the pad is never
+    /// empty.
+    func arsenal(for pitcher: Player) -> [PitchType] {
+        arsenalCache[pitcher.id] ?? PitchType.defaultArsenal
+    }
+
+    /// Pulls the pitcher's real arsenal from the league feed the first time
+    /// they take the mound. Best effort: a non-league game, a pitcher with no
+    /// feed id, or any network failure just leaves the generic mix in place.
+    func loadArsenal(for pitcher: Player) async {
+        guard arsenalCache[pitcher.id] == nil else { return }
+        guard let league = document.league, let externalID = pitcher.externalID else { return }
+        guard let provider = LeagueDirectory.arsenalProvider(for: league) else { return }
+
+        let season = Calendar.current.component(.year, from: document.startedAt)
+        guard
+            let arsenal = try? await provider.arsenal(pitcherExternalID: externalID, season: season),
+            !arsenal.isEmpty
+        else { return }
+
+        arsenalCache[pitcher.id] = arsenal
+    }
+
+    /// The batter's season line for the at-bat card, once fetched. Nil for a
+    /// custom game or a player the feed doesn't know.
+    func seasonStats(for player: Player) -> SeasonHittingStats? {
+        seasonStatsCache[player.id]
+    }
+
+    /// Pulls the batter's season line from the league feed the first time they
+    /// come up. MLB is a per-player fetch; NPB aggregates the whole league's
+    /// per-game files once and then serves every batter from memory. Best
+    /// effort — a custom game, a missing id, or any failure just leaves the
+    /// at-bat card on this game's line.
+    func loadSeasonStats(for player: Player) async {
+        guard seasonStatsCache[player.id] == nil else { return }
+        guard let league = document.league, let externalID = player.externalID else { return }
+
+        let season = Calendar(identifier: .gregorian).component(.year, from: document.startedAt)
+
+        switch league {
+        case .mlb:
+            if let stats = try? await MLBStatsProvider().seasonHitting(
+                playerExternalID: externalID,
+                season: season
+            ) {
+                seasonStatsCache[player.id] = stats
+            }
+        case .npb:
+            if npbSeasonTable == nil, !npbSeasonRequested {
+                npbSeasonRequested = true
+                npbSeasonTable = await NPBDataProvider().seasonHitting(season: season)
+            }
+            if let stats = npbSeasonTable?[externalID] {
+                seasonStatsCache[player.id] = stats
+            }
+        case .kbo, .other:
+            break
+        }
+    }
 
     func runnerOnBase(_ base: Base) -> Player? {
         state.bases[base].flatMap { document.player(id: $0.playerID) }

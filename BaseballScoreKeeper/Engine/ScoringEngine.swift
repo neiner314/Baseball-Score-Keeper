@@ -486,6 +486,17 @@ enum ScoringEngine {
         }
     }
 
+    /// The base a runner would reach under the automatic rules — what the
+    /// manual-advancement prompt pre-selects, so the scorer only taps the
+    /// exceptions.
+    static func defaultAdvance(
+        for outcome: PlayOutcome,
+        runnerOn base: Base,
+        bases: Bases
+    ) -> AdvanceTarget {
+        defaultRunnerTarget(for: outcome, runnerOn: base, bases: bases)
+    }
+
     private static func defaultRunnerTarget(
         for outcome: PlayOutcome,
         runnerOn base: Base,

@@ -73,7 +73,8 @@ enum BallInPlayChoice: String, CaseIterable, Identifiable, Hashable, Sendable {
     func outcome(
         chain: [Position],
         trajectory: Trajectory,
-        location: FieldLocation?
+        location: FieldLocation?,
+        errorFielder: Position? = nil
     ) -> PlayOutcome? {
         let batted = BattedBall(trajectory: trajectory, location: location)
 
@@ -87,7 +88,9 @@ enum BallInPlayChoice: String, CaseIterable, Identifiable, Hashable, Sendable {
         case .out:
             return .fieldOut(fielders: Self.completed(chain, trajectory: trajectory), batted: batted)
         case .error:
-            return .error(fielder: first, batted: batted, basesAwarded: 1)
+            // The error is charged to whoever the scorer picked out of the play,
+            // defaulting to the fielder who first touched the ball.
+            return .error(fielder: errorFielder ?? first, batted: batted, basesAwarded: 1)
         case .fieldersChoice:
             return .fieldersChoice(fielders: Self.completedChoice(chain), batted: batted)
         case .doublePlay:

@@ -51,63 +51,92 @@ enum FieldGeometry {
     }
 
     static func homePlate(in size: CGSize) -> CGPoint {
-        CGPoint(x: size.width * 0.5, y: size.height * 0.955)
+        scaled(DrawnField.plate, in: size)
+    }
+
+    static func scaled(_ unit: CGPoint, in size: CGSize) -> CGPoint {
+        CGPoint(x: unit.x * size.width, y: unit.y * size.height)
     }
 }
 
-/// Fair territory: the wedge from home plate out to the wall.
+/// The one set of anchors every piece of the drawn field is built from, in
+/// normalized 0...1 coordinates with home plate at the bottom centre.
+///
+/// Before this existed the grass wedge, the dirt and the base paths each had
+/// their own hand-tuned numbers that didn't agree — the foul lines ran off the
+/// sides and the two diamonds sat slightly askew of each other. Deriving them
+/// all from the same plate and bases is what makes the field read as one thing.
+enum DrawnField {
+    static let plate = CGPoint(x: 0.50, y: 0.90)
+    static let firstBag = CGPoint(x: 0.725, y: 0.675)
+    static let secondBag = CGPoint(x: 0.50, y: 0.45)
+    static let thirdBag = CGPoint(x: 0.275, y: 0.675)
+
+    /// Foul poles and the control point that bows the outfield fence up to a
+    /// deep centre. Kept inside the frame so nothing clips at the corners.
+    static let leftFoulPole = CGPoint(x: 0.06, y: 0.46)
+    static let rightFoulPole = CGPoint(x: 0.94, y: 0.46)
+    static let fenceControl = CGPoint(x: 0.50, y: 0.02)
+
+    /// The dirt is the base diamond pushed out a little from its centre, so the
+    /// bags sit on the infield rather than on its very edge.
+    static func infieldCorners(outset: CGFloat = 1.18) -> [CGPoint] {
+        let bags = [plate, firstBag, secondBag, thirdBag]
+        let center = CGPoint(
+            x: bags.map(\.x).reduce(0, +) / 4,
+            y: bags.map(\.y).reduce(0, +) / 4
+        )
+        return bags.map { bag in
+            CGPoint(
+                x: center.x + (bag.x - center.x) * outset,
+                y: center.y + (bag.y - center.y) * outset
+            )
+        }
+    }
+}
+
+/// Fair territory: the two foul lines from home plate out to the poles, closed
+/// by an outfield fence that bows up to a deep centre. All contained in the
+/// frame so the corners never clip.
 struct FairTerritoryShape: Shape {
     func path(in rect: CGRect) -> Path {
-        var path = Path()
-        let home = CGPoint(x: rect.midX, y: rect.maxY * 0.97)
-        let radius = rect.height * 0.92
+        func p(_ unit: CGPoint) -> CGPoint { FieldGeometry.scaled(unit, in: rect.size) }
 
-        path.move(to: home)
-        path.addLine(
-            to: CGPoint(x: home.x - radius * 0.72, y: home.y - radius * 0.72)
-        )
+        var path = Path()
+        path.move(to: p(DrawnField.plate))
+        path.addLine(to: p(DrawnField.leftFoulPole))
         path.addQuadCurve(
-            to: CGPoint(x: home.x + radius * 0.72, y: home.y - radius * 0.72),
-            control: CGPoint(x: home.x, y: home.y - radius * 1.34)
+            to: p(DrawnField.rightFoulPole),
+            control: p(DrawnField.fenceControl)
         )
         path.closeSubpath()
         return path
     }
 }
 
-/// The infield dirt — a diamond with the corners at the bases.
+/// The infield dirt — the base diamond, outset a touch so the bags sit on it.
 struct InfieldShape: Shape {
     func path(in rect: CGRect) -> Path {
-        let size = rect.size
-        let home = CGPoint(x: rect.midX, y: size.height * 0.93)
-        let first = CGPoint(x: size.width * 0.795, y: size.height * 0.655)
-        let second = CGPoint(x: rect.midX, y: size.height * 0.40)
-        let third = CGPoint(x: size.width * 0.205, y: size.height * 0.655)
+        let corners = DrawnField.infieldCorners().map { FieldGeometry.scaled($0, in: rect.size) }
 
         var path = Path()
-        path.move(to: home)
-        path.addLine(to: first)
-        path.addLine(to: second)
-        path.addLine(to: third)
+        path.move(to: corners[0])
+        for corner in corners.dropFirst() { path.addLine(to: corner) }
         path.closeSubpath()
         return path
     }
 }
 
-/// The base paths, drawn as thin lines over the dirt.
+/// The base paths, drawn as thin lines bag to bag inside the dirt.
 struct BasePathsShape: Shape {
     func path(in rect: CGRect) -> Path {
-        let size = rect.size
-        let home = CGPoint(x: rect.midX, y: size.height * 0.90)
-        let first = CGPoint(x: size.width * 0.72, y: size.height * 0.655)
-        let second = CGPoint(x: rect.midX, y: size.height * 0.455)
-        let third = CGPoint(x: size.width * 0.28, y: size.height * 0.655)
+        func p(_ unit: CGPoint) -> CGPoint { FieldGeometry.scaled(unit, in: rect.size) }
 
         var path = Path()
-        path.move(to: home)
-        path.addLine(to: first)
-        path.addLine(to: second)
-        path.addLine(to: third)
+        path.move(to: p(DrawnField.plate))
+        path.addLine(to: p(DrawnField.firstBag))
+        path.addLine(to: p(DrawnField.secondBag))
+        path.addLine(to: p(DrawnField.thirdBag))
         path.closeSubpath()
         return path
     }

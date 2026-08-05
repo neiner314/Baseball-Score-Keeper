@@ -35,7 +35,7 @@ enum League: String, Codable, CaseIterable, Identifiable, Sendable {
     }
 
     /// Whether rosters can be pulled straight off the wire for this league.
-    var hasLiveProvider: Bool { self == .mlb }
+    var hasLiveProvider: Bool { self == .mlb || self == .npb }
 
     /// Whether the official scoring can be fetched back and compared.
     var hasOfficialScoring: Bool { self == .mlb }
@@ -47,7 +47,10 @@ enum League: String, Codable, CaseIterable, Identifiable, Sendable {
         case .mlb:
             "Rosters, posted lineups and official scoring come from MLB's public Stats API. No account needed."
         case .npb:
-            "NPB publishes no free API. Import a roster file once per team and it's reusable all season."
+            "Pick a date to pull both rosters (lineups aren't in the data, so you set the nine). "
+                + "NPB publishes no official feed — this uses data sourced from the Nippon Baseball Data "
+                + "Repository, which can be accessed here: "
+                + "https://github.com/armstjc/Nippon-Baseball-Data-Repository"
         case .kbo:
             "The KBO publishes no free API. Import a roster file once per team and it's reusable all season."
         case .other:

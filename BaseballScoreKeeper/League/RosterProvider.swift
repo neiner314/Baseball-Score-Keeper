@@ -66,15 +66,29 @@ protocol OfficialScoringProvider: Sendable {
     func officialPlays(gameID: String) async throws -> [OfficialPlay]
 }
 
+/// Fetches a pitcher's real pitch mix, most-thrown first, so the velocity pad
+/// can label itself with what this pitcher actually throws.
+protocol PitchArsenalProvider: Sendable {
+    func arsenal(pitcherExternalID: String, season: Int) async throws -> [PitchType]
+}
+
 enum LeagueDirectory {
     static func provider(for league: League) -> RosterProvider? {
+        switch league {
+        case .mlb: return MLBStatsProvider()
+        case .npb: return NPBDataProvider()
+        case .kbo, .other: return nil
+        }
+    }
+
+    static func officialScoringProvider(for league: League) -> OfficialScoringProvider? {
         switch league {
         case .mlb: return MLBStatsProvider()
         case .npb, .kbo, .other: return nil
         }
     }
 
-    static func officialScoringProvider(for league: League) -> OfficialScoringProvider? {
+    static func arsenalProvider(for league: League) -> PitchArsenalProvider? {
         switch league {
         case .mlb: return MLBStatsProvider()
         case .npb, .kbo, .other: return nil

@@ -1,0 +1,547 @@
+{
+  "sourceLanguage" : "en",
+  "strings" : {
+    "" : {
+
+    },
+    "—" : {
+
+    },
+    "·" : {
+
+    },
+    "#" : {
+
+    },
+    "#%@" : {
+
+    },
+    "%@ @ %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ @ %2$@"
+          }
+        }
+      }
+    },
+    "%@ %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ %2$@"
+          }
+        }
+      }
+    },
+    "%@ %@ · %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ %2$@ · %3$@"
+          }
+        }
+      }
+    },
+    "%@ BATTING" : {
+
+    },
+    "%@ has %lld challenge%@ left" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ has %2$lld challenge%3$@ left"
+          }
+        }
+      }
+    },
+    "%@ has no challenges left" : {
+
+    },
+    "%@ PITCHING" : {
+
+    },
+    "%@, %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@, %2$@"
+          }
+        }
+      }
+    },
+    "%lld" : {
+
+    },
+    "%lld  ·  %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$lld  ·  %2$@"
+          }
+        }
+      }
+    },
+    "%lld · %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$lld · %2$@"
+          }
+        }
+      }
+    },
+    "%lld available%@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$lld available%2$@"
+          }
+        }
+      }
+    },
+    "%lld challenges left" : {
+
+    },
+    "%lld of %lld overturned" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$lld of %2$lld overturned"
+          }
+        }
+      }
+    },
+    "%lld out" : {
+
+    },
+    "%lld players" : {
+
+    },
+    "%lld, %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$lld, %2$@"
+          }
+        }
+      }
+    },
+    "↳" : {
+
+    },
+    "ABB" : {
+
+    },
+    "Abbreviation" : {
+
+    },
+    "Accuracy" : {
+
+    },
+    "Add player" : {
+
+    },
+    "Base" : {
+
+    },
+    "BASEBALL" : {
+
+    },
+    "Batting order & bench" : {
+
+    },
+    "Batting slot" : {
+
+    },
+    "Batting…" : {
+
+    },
+    "BENCH" : {
+
+    },
+    "Box Score" : {
+
+    },
+    "Boxes fill in as batters resolve." : {
+
+    },
+    "Called strikeout" : {
+
+    },
+    "Cancel" : {
+
+    },
+    "Caught stealing" : {
+
+    },
+    "CHALLENGE" : {
+
+    },
+    "Challenge the %@" : {
+
+    },
+    "CHALLENGES" : {
+
+    },
+    "Check" : {
+
+    },
+    "Choose a team" : {
+
+    },
+    "Clear" : {
+
+    },
+    "CLEAR" : {
+
+    },
+    "Close" : {
+
+    },
+    "Coming in" : {
+
+    },
+    "Count %lld and %lld" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Count %1$lld and %2$lld"
+          }
+        }
+      }
+    },
+    "Date" : {
+
+    },
+    "Defense" : {
+
+    },
+    "DIFFERENCES" : {
+
+    },
+    "Done" : {
+
+    },
+    "Drag to reorder. The first nine bat; everyone else starts on the bench." : {
+
+    },
+    "Error on %@" : {
+
+    },
+    "EVERY BALL IN PLAY" : {
+
+    },
+    "Fetching official scoring…" : {
+
+    },
+    "FINAL" : {
+
+    },
+    "Find games" : {
+
+    },
+    "Fix Play" : {
+
+    },
+    "Forced from %@ — did they make it?" : {
+
+    },
+    "Games" : {
+
+    },
+    "Games on" : {
+
+    },
+    "Games you score are saved here automatically." : {
+
+    },
+    "H" : {
+
+    },
+    "HOW DID IT COME BACK?" : {
+
+    },
+    "if overturned" : {
+
+    },
+    "Import" : {
+
+    },
+    "Import %@" : {
+
+    },
+    "Import a roster with + above, or save one from a game you're setting up." : {
+
+    },
+    "Import Game" : {
+
+    },
+    "Importing rosters…" : {
+
+    },
+    "IN PROGRESS" : {
+
+    },
+    "K" : {
+
+    },
+    "Keep Scoring" : {
+
+    },
+    "League" : {
+
+    },
+    "Leave this game?" : {
+
+    },
+    "LHP" : {
+
+    },
+    "LINEUP DUE UP" : {
+
+    },
+    "Loading…" : {
+
+    },
+    "LOB" : {
+
+    },
+    "LOST" : {
+
+    },
+    "Make change" : {
+
+    },
+    "MPH" : {
+
+    },
+    "My Scorebook" : {
+
+    },
+    "My Teams" : {
+
+    },
+    "Name" : {
+
+    },
+    "NEW GAME" : {
+
+    },
+    "No one left on the bench" : {
+
+    },
+    "NO PITCHER SET" : {
+
+    },
+    "No plate appearances yet" : {
+
+    },
+    "No saved teams" : {
+
+    },
+    "No saved teams yet. Save one from here or import in My Teams." : {
+
+    },
+    "Nothing scored yet" : {
+
+    },
+    "ON THE MOUND" : {
+
+    },
+    "One player per line: number, name, position.\n\n17, Shohei Ohtani, DH\n11, Yoshinobu Yamamoto, P" : {
+
+    },
+    "Open Scorekeeper" : {
+
+    },
+    "Or tap the fielders in the order they handled it" : {
+
+    },
+    "OUT" : {
+
+    },
+    "P" : {
+
+    },
+    "Pinch hitter" : {
+
+    },
+    "Pinch runner" : {
+
+    },
+    "PITCH" : {
+
+    },
+    "Pitch type and velocity" : {
+
+    },
+    "PITCHER" : {
+
+    },
+    "Pitching change" : {
+
+    },
+    "Player" : {
+
+    },
+    "Players" : {
+
+    },
+    "Position" : {
+
+    },
+    "R" : {
+
+    },
+    "Release to score · drag away to cancel" : {
+
+    },
+    "Remove last fielder" : {
+
+    },
+    "RESUME" : {
+
+    },
+    "Return to Main Menu" : {
+
+    },
+    "RHP" : {
+
+    },
+    "RUNNER %lld OF %lld" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "RUNNER %1$lld OF %2$lld"
+          }
+        }
+      }
+    },
+    "Runner on %@" : {
+
+    },
+    "Running for" : {
+
+    },
+    "SAFE" : {
+
+    },
+    "Score this game, or read its book?" : {
+
+    },
+    "Scorebook" : {
+
+    },
+    "Scorekeeper" : {
+
+    },
+    "Select" : {
+
+    },
+    "Settings" : {
+
+    },
+    "Share as PDF" : {
+
+    },
+    "Slot" : {
+
+    },
+    "SPEED" : {
+
+    },
+    "START SCORING" : {
+
+    },
+    "Stole %@" : {
+
+    },
+    "Substitution" : {
+
+    },
+    "SWIPE" : {
+
+    },
+    "Swipe to a pitch, hold to set its speed" : {
+
+    },
+    "TAP\nONE" : {
+
+    },
+    "Tap a difference to fix how you scored it." : {
+
+    },
+    "Tap a team to start a game with it. Save teams from the game-setup screen, or import one with + above." : {
+
+    },
+    "Tap away to go back" : {
+
+    },
+    "Tap more fielders to extend the chain" : {
+
+    },
+    "Tap the base, then Safe or Out" : {
+
+    },
+    "Tap, flick toward an option, or hold" : {
+
+    },
+    "Team" : {
+
+    },
+    "Team name" : {
+
+    },
+    "Type" : {
+
+    },
+    "TYPE" : {
+
+    },
+    "Undo last event" : {
+
+    },
+    "View Scorebook" : {
+
+    },
+    "Where did %@ end up?" : {
+
+    },
+    "WHO CHALLENGED" : {
+
+    },
+    "WHO COMMITTED THE ERROR?" : {
+
+    },
+    "WON" : {
+
+    },
+    "You scored %lld plate appearances; the official has %lld." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "You scored %1$lld plate appearances; the official has %2$lld."
+          }
+        }
+      }
+    },
+    "Your progress is saved — you can pick this game back up from where you left off." : {
+
+    }
+  },
+  "version" : "1.3"
+}

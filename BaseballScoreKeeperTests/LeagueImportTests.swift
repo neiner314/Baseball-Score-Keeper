@@ -80,13 +80,17 @@ final class RosterFileTests: XCTestCase {
 
 final class LeagueTests: XCTestCase {
 
-    /// The state of play as researched: MLB publishes a free feed, NPB and the
-    /// KBO do not. If that changes, this test is the thing to update.
-    func testOnlyMLBHasALiveProvider() {
+    /// The state of play as researched: MLB has its own free feed, NPB is
+    /// served by the community Nippon Baseball Data Repository, and the KBO has
+    /// neither. Only MLB carries official scoring back for the accuracy check.
+    func testLiveProvidersMatchWhatEachLeaguePublishes() {
         XCTAssertTrue(League.mlb.hasLiveProvider)
-        XCTAssertFalse(League.npb.hasLiveProvider)
+        XCTAssertTrue(League.npb.hasLiveProvider)
         XCTAssertFalse(League.kbo.hasLiveProvider)
         XCTAssertFalse(League.other.hasLiveProvider)
+
+        XCTAssertTrue(League.mlb.hasOfficialScoring)
+        XCTAssertFalse(League.npb.hasOfficialScoring)
     }
 
     func testProviderDirectoryMatchesTheLeagueFlags() {
@@ -118,6 +122,35 @@ final class LeagueTests: XCTestCase {
         var japanese = imported
         japanese.league = .npb
         XCTAssertFalse(japanese.supportsAccuracyCheck, "NPB publishes no official scoring feed")
+    }
+
+    /// The NPB feed's four position buckets fold onto the scorebook's nine:
+    /// pitcher and catcher exactly, infield and outfield onto a default the
+    /// scorer reassigns. Anything else — a manager or coach row — is not a
+    /// player and maps to nothing so it's left out of the roster.
+    func testNPBPositionBucketsMapToPlayableSpots() {
+        XCTAssertEqual(NPBDataProvider.position(rosterName: "投手"), .pitcher)
+        XCTAssertEqual(NPBDataProvider.position(rosterName: "捕手"), .catcher)
+        XCTAssertEqual(NPBDataProvider.position(rosterName: "内野手"), .shortstop)
+        XCTAssertEqual(NPBDataProvider.position(rosterName: "外野手"), .centerField)
+        XCTAssertNil(NPBDataProvider.position(rosterName: "監督"))
+        XCTAssertNil(NPBDataProvider.position(rosterName: nil))
+    }
+
+    /// Japanese names are written family-name-first, so the short form is the
+    /// first token; Western names keep the surname-last rule and its suffixes.
+    func testShortNameRespectsJapaneseNameOrder() {
+        func short(_ name: String) -> String {
+            Player(number: "0", name: name, primaryPosition: .pitcher).shortName
+        }
+
+        XCTAssertEqual(short("大谷 翔平"), "大谷")
+        XCTAssertEqual(short("竹下 徠空"), "竹下")
+        XCTAssertEqual(short("Aaron Judge"), "Judge")
+        XCTAssertEqual(short("Jazz Chisholm Jr."), "Chisholm Jr.")
+
+        XCTAssertTrue("横川 凱".containsJapaneseScript)
+        XCTAssertFalse("Yokokawa Gai".containsJapaneseScript)
     }
 }
 

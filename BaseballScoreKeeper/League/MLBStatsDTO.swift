@@ -168,6 +168,66 @@ enum MLBStatsDTO {
         var batter: PersonDTO?
         var pitcher: PersonDTO?
     }
+
+    // MARK: Pitch arsenal
+
+    /// `people(...)` hydrated with the `pitchArsenal` pitching stat. Each split
+    /// is one pitch the pitcher throws, with how often and how hard.
+    struct PeopleResponse: Decodable, Sendable {
+        var people: [PersonStatsDTO]?
+    }
+
+    struct PersonStatsDTO: Decodable, Sendable {
+        var id: Int?
+        var stats: [StatGroupDTO]?
+    }
+
+    struct StatGroupDTO: Decodable, Sendable {
+        var splits: [StatSplitDTO]?
+    }
+
+    struct StatSplitDTO: Decodable, Sendable {
+        var stat: ArsenalStatDTO?
+    }
+
+    struct ArsenalStatDTO: Decodable, Sendable {
+        var type: PitchTypeCodeDTO?
+        var averageSpeed: Double?
+        var count: Int?
+    }
+
+    struct PitchTypeCodeDTO: Decodable, Sendable {
+        var code: String?
+        var description: String?
+    }
+
+    // MARK: Season hitting
+
+    /// `people(...)` hydrated with the `season` hitting stat. The rate stats
+    /// come as strings (".287"), the counting stats as numbers, so both go
+    /// through `LooseString`.
+    struct HittingResponse: Decodable, Sendable {
+        var people: [HittingPerson]?
+    }
+
+    struct HittingPerson: Decodable, Sendable {
+        var stats: [HittingGroup]?
+    }
+
+    struct HittingGroup: Decodable, Sendable {
+        var splits: [HittingSplit]?
+    }
+
+    struct HittingSplit: Decodable, Sendable {
+        var stat: HittingStatDTO?
+    }
+
+    struct HittingStatDTO: Decodable, Sendable {
+        var avg: LooseString?
+        var obp: LooseString?
+        var homeRuns: LooseString?
+        var rbi: LooseString?
+    }
 }
 
 extension Position {
@@ -184,5 +244,25 @@ extension Position {
             return nil
         }
         self = match
+    }
+}
+
+extension PitchType {
+    /// Maps MLB's pitch-type codes onto the eight the app tracks. The feed
+    /// carries more shapes than a scorebook cares about — a sweeper and a
+    /// slurve both go down as a slider — so several codes fold onto one type.
+    /// An unknown code returns nil rather than guessing.
+    init?(mlbArsenalCode code: String?) {
+        switch code?.uppercased() {
+        case "FF", "FA": self = .fastball
+        case "SI", "FT": self = .sinker
+        case "FC": self = .cutter
+        case "SL", "ST", "SV": self = .slider
+        case "CU", "KC", "CS": self = .curveball
+        case "CH", "SC": self = .changeup
+        case "FS", "FO": self = .splitter
+        case "KN": self = .knuckleball
+        default: return nil
+        }
     }
 }

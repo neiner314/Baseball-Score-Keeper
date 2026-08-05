@@ -16,6 +16,13 @@ private struct BallInPlayState {
     var chain: [Position] = []
     var trajectory: Trajectory = .grounder
     var showsRing = false
+    /// When non-empty, the "who booted it?" picker is up for an error, holding
+    /// the fielders that could be charged.
+    var errorCandidates: [Position] = []
+    /// Set while the "where did the runners end up?" prompt is up, holding the
+    /// play waiting to be recorded and the chosen destination per runner.
+    var pendingOutcome: PlayOutcome?
+    var advanceTargets: [Base: AdvanceTarget] = [:]
 
     mutating func closeDial() {
         isDialActive = false
@@ -29,6 +36,9 @@ private struct BallInPlayState {
         closeDial()
         chain = []
         showsRing = false
+        errorCandidates = []
+        pendingOutcome = nil
+        advanceTargets = [:]
     }
 }
 
@@ -44,7 +54,6 @@ struct OneHandedScoringView: View {
     @State private var pendingVelocity: Int?
     @State private var pendingPitchType: PitchType?
     @State private var showsChallengeSheet = false
-    @State private var showsDetailRail = false
 
     private let space = "scoringSpace"
 
@@ -54,13 +63,29 @@ struct OneHandedScoringView: View {
         settings.handedness == .right ? .bottomTrailing : .bottomLeading
     }
 
+    /// How far up the screen the PITCH pad's bottom floats. Roughly a third of
+    /// the way up on a modern phone, which keeps it in the thumb's arc while
+    /// leaving the line score room to sit along the very bottom edge.
+    private let pitchPadBottom: CGFloat = 230
+
+    /// The whole cluster is bottom-pinned then raised. When the pitch-type pad
+    /// is showing it hangs below the PITCH pad inside the same column, so the
+    /// raise is reduced by its height to keep the PITCH pad itself parked in the
+    /// same spot for everyone.
+    private var padRaise: CGFloat {
+        let belowPitch: CGFloat = (settings.trackPitchType || settings.trackPitchVelocity) ? 102 : 0
+        return pitchPadBottom - belowPitch
+    }
+
     var body: some View {
         ZStack(alignment: clusterAlignment) {
             AppBackground()
 
-            readout
+            topReadout
 
-            thumbCluster
+            lineScoreFooter
+
+            actionRow
 
             if flow.isDialActive {
                 dialOverlay
@@ -71,12 +96,23 @@ struct OneHandedScoringView: View {
                     choices: BallInPlayChoice.choices(for: store.state, chain: flow.chain),
                     chain: flow.chain,
                     trajectory: flow.trajectory,
-                    showsTrajectoryPicker: settings.notationDetail == .full,
+                    // Always offered: the trajectory is what tells a ground out
+                    // from a line out from a pop, which the scorer needs whether
+                    // or not they've turned on full notation detail.
+                    showsTrajectoryPicker: true,
                     thumbBias: 36 * mirror,
-                    onPick: { commit(choice: $0) },
+                    onPick: { pick($0) },
                     onChangeTrajectory: { flow.trajectory = $0 },
                     onCancel: { flow.reset() }
                 )
+            }
+
+            if !flow.errorCandidates.isEmpty {
+                errorPickerOverlay
+            }
+
+            if flow.pendingOutcome != nil {
+                advanceOverlay
             }
 
             if showsChallengeSheet, let pitch = store.challengeablePitch {
@@ -96,23 +132,23 @@ struct OneHandedScoringView: View {
         }
         .coordinateSpace(name: space)
         .onAppear { Haptics.shared.prepare() }
+        .task(id: store.currentPitcher?.id) {
+            if let pitcher = store.currentPitcher {
+                await store.loadArsenal(for: pitcher)
+            }
+        }
+        .task(id: store.currentBatter?.id) {
+            if let batter = store.currentBatter {
+                await store.loadSeasonStats(for: batter)
+            }
+        }
     }
 
     // MARK: - Read-only top half
 
-    /// The line score is the nicest thing on the screen and the first thing to
-    /// go: on a short phone the pads matter more than the arc of the game.
-    /// `ViewThatFits` picks whichever version actually clears the cluster.
-    private var readout: some View {
-        ViewThatFits(in: .vertical) {
-            readoutStack(showsLineScore: true)
-            readoutStack(showsLineScore: false)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .animation(.easeOut(duration: 0.2), value: store.lastHeadline)
-    }
-
-    private func readoutStack(showsLineScore: Bool) -> some View {
+    /// The scoreboard and the current at-bat, pinned to the top. This is the
+    /// glance you take between pitches; nothing here takes a touch.
+    private var topReadout: some View {
         VStack(spacing: 10) {
             ScoreBar(state: store.state, teams: store.teams)
 
@@ -120,24 +156,91 @@ struct OneHandedScoringView: View {
                 batter: store.currentBatter,
                 position: store.currentBatterPosition,
                 pitches: store.state.currentAtBatPitches,
-                bases: store.state.bases,
-                runnerName: { store.runnerOnBase($0)?.shortName },
+                battingLine: store.currentBatterLine,
+                seasonStats: store.currentBatter.flatMap { store.seasonStats(for: $0) },
                 headline: store.lastHeadline
             )
 
             challengePrompt
-
-            Spacer(minLength: 0)
-
-            if showsLineScore {
-                LineScoreRibbon(state: store.state, teams: store.teams)
-            }
-
-            detailRail
         }
         .padding(.horizontal, Theme.Metrics.screenMargin)
         .padding(.top, 6)
-        .padding(.bottom, 292)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .animation(.easeOut(duration: 0.2), value: store.lastHeadline)
+    }
+
+    /// The runs-per-inning bar, along the very bottom edge under the pitch pad.
+    private var lineScoreFooter: some View {
+        LineScoreRibbon(state: store.state, teams: store.teams)
+            .padding(.horizontal, Theme.Metrics.screenMargin)
+            .padding(.bottom, 12)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+    }
+
+    // MARK: - Action row
+
+    /// The one region you actually touch: the pitcher's live line floated up
+    /// the far side from the thumb, and the thumb column — undo, the pitch pad,
+    /// and the pitch-type/velocity pad — on the near side. The whole cluster is
+    /// floated a third of the way up so it lands in the thumb's arc rather than
+    /// the corner. Tops of the pitcher card and the undo button line up.
+    private var actionRow: some View {
+        HStack(alignment: .top, spacing: 12) {
+            if settings.handedness == .right {
+                pitcherPanel
+                Spacer(minLength: 0)
+                thumbColumn
+            } else {
+                thumbColumn
+                Spacer(minLength: 0)
+                pitcherPanel
+            }
+        }
+        .padding(.horizontal, Theme.Metrics.screenMargin)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+        .offset(y: -padRaise)
+    }
+
+    /// The mound box, with the base runners drawn on a small field right under
+    /// it. Tapping a runner records a steal or a caught stealing.
+    private var pitcherPanel: some View {
+        VStack(spacing: 10) {
+            PitcherPanel(
+                pitcher: store.currentPitcher,
+                line: store.currentPitcherLine
+            )
+
+            RunnerField(
+                bases: store.state.bases,
+                runnerNumber: { store.runnerOnBase($0)?.number },
+                onSteal: { store.record(.stolenBase(from: $0)) },
+                onCaught: { store.record(.caughtStealing(from: $0)) }
+            )
+            .frame(maxWidth: 150)
+        }
+        .frame(maxWidth: 178, alignment: .top)
+    }
+
+    /// Undo on top, the pitch pad under it, and the pitch-type/velocity pad
+    /// below that — nudged toward the centre of the screen so its arc of pitch
+    /// labels fans into open space. The inset on the edge the pitch pad sits
+    /// against keeps its outermost flick chip on screen.
+    private var thumbColumn: some View {
+        VStack(alignment: thumbEdgeAlignment, spacing: 0) {
+            undoPad
+            Spacer().frame(height: 34)
+            pitchPad
+            if settings.trackPitchType || settings.trackPitchVelocity {
+                Spacer().frame(height: 26)
+                pitchTypePad
+                    .offset(x: 44 * -mirror)
+            }
+        }
+        .padding(settings.handedness == .right ? .trailing : .leading, 44)
+    }
+
+    private var thumbEdgeAlignment: HorizontalAlignment {
+        settings.handedness == .right ? .trailing : .leading
     }
 
     /// Only on screen while the call is actually reviewable, which is the rule
@@ -155,87 +258,30 @@ struct OneHandedScoringView: View {
         }
     }
 
-    // MARK: - Detail rail
+    // MARK: - Pads
 
-    /// Velocity and pitch type, collapsed to a single quiet line until asked
-    /// for. They used to sit open in the middle of the screen shouting at a
-    /// scorer who mostly doesn't log them — now they're one tap away and
-    /// nowhere near the eye.
-    @ViewBuilder
-    private var detailRail: some View {
-        if settings.trackPitchVelocity || settings.trackPitchType {
-            VStack(alignment: .trailing, spacing: 8) {
-                if showsDetailRail {
-                    if settings.trackPitchVelocity {
-                        QuickChipRow(
-                            title: "MPH",
-                            items: Self.velocityPresets.map { ("\($0)", $0) },
-                            selection: pendingVelocity,
-                            onSelect: { pendingVelocity = (pendingVelocity == $0) ? nil : $0 }
-                        )
-                    }
-                    if settings.trackPitchType {
-                        QuickChipRow(
-                            title: "TYPE",
-                            items: PitchType.common.map { ($0.abbreviation, $0) },
-                            selection: pendingPitchType,
-                            onSelect: { pendingPitchType = (pendingPitchType == $0) ? nil : $0 }
-                        )
-                    }
-                }
-
-                Button {
-                    withAnimation(.easeOut(duration: 0.18)) {
-                        showsDetailRail.toggle()
-                    }
-                } label: {
-                    HStack(spacing: 6) {
-                        Text(railSummary)
-                            .font(Theme.Typeface.label(11, weight: .semibold))
-                        Image(systemName: showsDetailRail ? "chevron.down" : "chevron.up")
-                            .font(.system(size: 9, weight: .bold))
-                    }
-                    .foregroundStyle(railIsSet ? Theme.accent : Theme.tertiaryText)
-                    .padding(.horizontal, 11)
-                    .padding(.vertical, 7)
-                    .luminousCapsule(railIsSet ? Theme.accent : Theme.neutral, isProminent: railIsSet)
-                }
-                .buttonStyle(.plain)
-                .frame(maxWidth: .infinity, alignment: .leading)
+    /// The pitch type and its speed in one gesture: swipe to the pitch, hold to
+    /// scrub the velocity. Labelled with this pitcher's real arsenal when the
+    /// league feed has it, a generic mix otherwise. Only the tracked halves are
+    /// live — a scorer logging type but not velocity just picks and lifts.
+    private var pitchTypePad: some View {
+        PitchTypeVelocityPad(
+            arsenal: store.currentPitcher.map { store.arsenal(for: $0) } ?? PitchType.defaultArsenal,
+            tracksType: settings.trackPitchType,
+            tracksVelocity: settings.trackPitchVelocity,
+            mirror: mirror,
+            hapticsEnabled: settings.hapticsEnabled,
+            armedType: pendingPitchType,
+            armedVelocity: pendingVelocity,
+            onCommit: { type, velocity in
+                if settings.trackPitchType, let type { pendingPitchType = type }
+                if settings.trackPitchVelocity, let velocity { pendingVelocity = velocity }
+            },
+            onClear: {
+                pendingPitchType = nil
+                pendingVelocity = nil
             }
-        }
-    }
-
-    private var railIsSet: Bool { pendingVelocity != nil || pendingPitchType != nil }
-
-    /// Collapsed, the rail still shows what's armed for the next pitch — the
-    /// one thing you'd need to know without opening it.
-    private var railSummary: String {
-        var parts: [String] = []
-        if let pendingVelocity { parts.append("\(pendingVelocity)") }
-        if let pendingPitchType { parts.append(pendingPitchType.abbreviation) }
-        return parts.isEmpty ? "Pitch detail" : parts.joined(separator: " · ")
-    }
-
-    private static let velocityPresets = [82, 88, 92, 95, 98, 102]
-
-    // MARK: - Thumb cluster
-
-    /// The three pads sit on the arc a thumb actually sweeps, not jammed into
-    /// the corner: the pitch pad needs room around it for its flick chips, and
-    /// a pad flush against the edge would push half of them off screen.
-    private var thumbCluster: some View {
-        ZStack(alignment: clusterAlignment) {
-            pitchPad
-                .offset(x: -72 * mirror, y: -58)
-
-            inPlayPad
-                .offset(x: -177 * mirror, y: -113)
-
-            undoPad
-                .offset(x: -78 * mirror, y: -186)
-        }
-        .frame(width: 300, height: 280, alignment: clusterAlignment)
+        )
     }
 
     /// Ball left, strike right — the way the count is written. See
@@ -261,28 +307,6 @@ struct OneHandedScoringView: View {
                 recordPitch(PitchPadLayout.heldOutcome)
             }
         )
-    }
-
-    private var inPlayPad: some View {
-        Text("IN\nPLAY")
-            .font(Theme.Typeface.label(13, weight: .bold))
-            .multilineTextAlignment(.center)
-            .foregroundStyle(Theme.inPlay)
-            .frame(width: Theme.Metrics.secondaryPad, height: Theme.Metrics.secondaryPad)
-            .luminousCircle(Theme.inPlay, isProminent: flow.isDialActive)
-        .scaleEffect(flow.isDialActive ? 1.1 : 1)
-        .animation(.spring(response: 0.2, dampingFraction: 0.7), value: flow.isDialActive)
-        .contentShape(Circle())
-        .gesture(inPlayGesture)
-        .accessibilityElement()
-        .accessibilityLabel(Text("Ball in play"))
-        .accessibilityHint(Text("Tap to open the fielder dial, or drag straight onto a fielder"))
-        .accessibilityActions {
-            ForEach(Position.fielders) { position in
-                Button(position.fullName) { beginResult(chain: [position], fromDrag: false) }
-            }
-            Button("Nobody fielded it") { beginResult(chain: [], fromDrag: false) }
-        }
     }
 
     private var undoPad: some View {
@@ -423,48 +447,6 @@ struct OneHandedScoringView: View {
         return flow.isLatched ? "Who handled it?" : "Slide to a fielder"
     }
 
-    private var inPlayGesture: some Gesture {
-        DragGesture(minimumDistance: 0, coordinateSpace: .named(space))
-            .onChanged { value in
-                if !flow.isDialActive {
-                    flow.isDialActive = true
-                    flow.isLatched = false
-                    flow.didMove = false
-                    flow.chain = []
-                    Haptics.shared.tap(enabled: settings.hapticsEnabled)
-                }
-                let travel = (
-                    value.translation.width * value.translation.width
-                        + value.translation.height * value.translation.height
-                ).squareRoot()
-                if travel > 8 {
-                    flow.didMove = true
-                }
-                flow.finger = value.location
-            }
-            .onEnded { _ in
-                let fielder = flow.selection
-                let moved = flow.didMove
-                flow.closeDial()
-
-                // One gesture, no looking: released on a fielder, that's the
-                // play. This is the path that has to stay fast.
-                if let fielder {
-                    Haptics.shared.commit(enabled: settings.hapticsEnabled)
-                    beginResult(chain: [fielder], fromDrag: true)
-                    return
-                }
-
-                // A press that never moved is a tap: leave the dial up so it
-                // can be answered with deliberate taps.
-                if !moved {
-                    latchDialOpen()
-                    return
-                }
-                Haptics.shared.cancelled(enabled: settings.hapticsEnabled)
-            }
-    }
-
     // MARK: - Dial modes
 
     /// Opens the dial and leaves it up. Nothing is recorded yet — a stray tap
@@ -518,7 +500,229 @@ struct OneHandedScoringView: View {
         }
     }
 
-    private func commit(choice: BallInPlayChoice) {
+    // MARK: - Runner advancement
+
+    /// "Where did the runners end up?" — each runner already aboard, with the
+    /// automatic destination pre-selected so the scorer only taps the ones that
+    /// went somewhere else (held at second, took the extra base, thrown out).
+    private var advanceOverlay: some View {
+        ZStack(alignment: .bottom) {
+            Color.black.opacity(0.62)
+                .ignoresSafeArea()
+                .contentShape(Rectangle())
+
+            VStack(spacing: 16) {
+                Text("WHERE DID THE RUNNERS END UP?")
+                    .font(Theme.Typeface.overline(11))
+                    .tracking(1.4)
+                    .foregroundStyle(.white.opacity(0.7))
+
+                VStack(spacing: 12) {
+                    ForEach(advanceBases) { base in
+                        advanceRow(base)
+                    }
+                }
+
+                HStack(spacing: 10) {
+                    Button {
+                        cancelAdvance()
+                    } label: {
+                        Text("BACK")
+                            .font(Theme.Typeface.label(14, weight: .heavy))
+                            .foregroundStyle(.white)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 50)
+                            .background(Capsule().fill(.white.opacity(0.14)))
+                    }
+                    .buttonStyle(.plain)
+
+                    Button {
+                        commitAdvances()
+                    } label: {
+                        Text("SCORE IT")
+                            .font(Theme.Typeface.label(15, weight: .heavy))
+                            .foregroundStyle(.white)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 50)
+                            .luminousFill(Theme.accent, cornerRadius: 25, isProminent: true)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .frame(maxWidth: 380)
+            .padding(.horizontal, 18)
+            .padding(.bottom, 40)
+        }
+        .transition(.opacity)
+    }
+
+    private var advanceBases: [Base] {
+        flow.advanceTargets.keys.sorted { $0.rawValue > $1.rawValue }
+    }
+
+    private func advanceRow(_ base: Base) -> some View {
+        HStack(spacing: 10) {
+            VStack(alignment: .leading, spacing: 1) {
+                Text(base.label)
+                    .font(Theme.Typeface.overline(9))
+                    .foregroundStyle(.white.opacity(0.5))
+                Text(store.runnerOnBase(base)?.shortName ?? "Runner")
+                    .font(Theme.Typeface.label(14, weight: .heavy))
+                    .foregroundStyle(.white)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+            }
+            .frame(width: 78, alignment: .leading)
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 7) {
+                    ForEach(Self.targetOptions(for: base), id: \.self) { target in
+                        advanceChip(base: base, target: target)
+                    }
+                }
+                .padding(.vertical, 1)
+            }
+        }
+    }
+
+    private func advanceChip(base: Base, target: AdvanceTarget) -> some View {
+        let selected = flow.advanceTargets[base] == target
+        let tint = Self.advanceTint(target)
+        return Button {
+            Haptics.shared.zoneChanged(enabled: settings.hapticsEnabled)
+            flow.advanceTargets[base] = target
+        } label: {
+            Text(Self.advanceLabel(target))
+                .font(Theme.Typeface.label(13, weight: .bold))
+                .foregroundStyle(selected ? .white : tint)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 9)
+                .background(
+                    Capsule().fill(selected ? tint : .white.opacity(0.12))
+                )
+        }
+        .buttonStyle(.plain)
+    }
+
+    /// Forward stops only — a runner can hold, take a base ahead, score, or be
+    /// thrown out, but never retreat.
+    private static func targetOptions(for base: Base) -> [AdvanceTarget] {
+        switch base {
+        case .first: [.held, .second, .third, .home, .out]
+        case .second: [.held, .third, .home, .out]
+        case .third: [.held, .home, .out]
+        }
+    }
+
+    private static func advanceLabel(_ target: AdvanceTarget) -> String {
+        switch target {
+        case .held: "Hold"
+        case .first: "1st"
+        case .second: "2nd"
+        case .third: "3rd"
+        case .home: "Score"
+        case .out: "Out"
+        }
+    }
+
+    private static func advanceTint(_ target: AdvanceTarget) -> Color {
+        switch target {
+        case .out: Theme.miss
+        case .home: Theme.ball
+        default: Theme.accent
+        }
+    }
+
+    private func commitAdvances() {
+        guard let outcome = flow.pendingOutcome else { return }
+        let advances = flow.advanceTargets.map { ManualAdvance(from: $0.key, to: $0.value) }
+        Haptics.shared.commit(enabled: settings.hapticsEnabled)
+        record(outcome, manualAdvances: advances)
+    }
+
+    private func cancelAdvance() {
+        withAnimation(.easeOut(duration: 0.16)) {
+            flow.pendingOutcome = nil
+            flow.advanceTargets = [:]
+            flow.showsRing = true
+        }
+    }
+
+    /// "Who booted it?" — the fielders from the play, laid out for a thumb, so
+    /// the error goes to the right glove rather than always the first one.
+    private var errorPickerOverlay: some View {
+        ZStack(alignment: .bottom) {
+            Color.black.opacity(0.62)
+                .ignoresSafeArea()
+                .contentShape(Rectangle())
+                .onTapGesture { cancelErrorPicker() }
+
+            VStack(spacing: 14) {
+                Text("WHO COMMITTED THE ERROR?")
+                    .font(Theme.Typeface.overline(11))
+                    .tracking(1.4)
+                    .foregroundStyle(.white.opacity(0.7))
+
+                HStack(spacing: 12) {
+                    ForEach(flow.errorCandidates) { fielder in
+                        Button {
+                            Haptics.shared.commit(enabled: settings.hapticsEnabled)
+                            commit(choice: .error, errorFielder: fielder)
+                        } label: {
+                            VStack(spacing: 2) {
+                                Text("\(fielder.rawValue)")
+                                    .font(Theme.Typeface.score(26))
+                                    .foregroundStyle(.white)
+                                Text(fielder.abbreviation)
+                                    .font(Theme.Typeface.caption())
+                                    .foregroundStyle(.white.opacity(0.7))
+                            }
+                            .frame(width: 74, height: 74)
+                            .luminousCircle(Theme.foul, isProminent: true)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(Text("Error on \(fielder.fullName)"))
+                    }
+                }
+
+                Text("Tap away to go back")
+                    .font(Theme.Typeface.caption())
+                    .foregroundStyle(.white.opacity(0.5))
+            }
+            .padding(.horizontal, 18)
+            .padding(.bottom, 44)
+        }
+        .transition(.opacity)
+    }
+
+    private func cancelErrorPicker() {
+        withAnimation(.easeOut(duration: 0.16)) {
+            flow.errorCandidates = []
+            flow.showsRing = true
+        }
+    }
+
+    /// Routes a ring pick: an error with more than one fielder in the play
+    /// opens the "who booted it?" picker first; everything else commits.
+    private func pick(_ choice: BallInPlayChoice) {
+        if choice == .error, uniqueFielders.count > 1 {
+            Haptics.shared.tap(enabled: settings.hapticsEnabled)
+            withAnimation(.easeOut(duration: 0.16)) {
+                flow.showsRing = false
+                flow.errorCandidates = uniqueFielders
+            }
+        } else {
+            commit(choice: choice)
+        }
+    }
+
+    /// The chain's fielders, de-duplicated in the order they touched the ball.
+    private var uniqueFielders: [Position] {
+        var seen: Set<Position> = []
+        return flow.chain.filter { seen.insert($0).inserted }
+    }
+
+    private func commit(choice: BallInPlayChoice, errorFielder: Position? = nil) {
         let location: FieldLocation? = {
             guard settings.trackBallLocation, let fielder = flow.chain.first else { return nil }
             let unit = FieldGeometry.unitPoint(for: fielder)
@@ -529,20 +733,62 @@ struct OneHandedScoringView: View {
             let outcome = choice.outcome(
                 chain: flow.chain,
                 trajectory: flow.trajectory,
-                location: location
+                location: location,
+                errorFielder: errorFielder
             )
         else {
             flow.reset()
             return
         }
 
-        // The pitch and its result are one action to the scorer, so they are
-        // recorded together and undone together.
+        finalize(outcome)
+    }
+
+    /// A play that moves existing runners in more than one plausible way opens
+    /// the advancement prompt first; everything else records straight away.
+    private func finalize(_ outcome: PlayOutcome) {
+        let occupied = store.state.bases.occupied
+        guard !occupied.isEmpty, Self.allowsAdvancePrompt(outcome) else {
+            record(outcome, manualAdvances: nil)
+            return
+        }
+
+        var targets: [Base: AdvanceTarget] = [:]
+        for base in occupied {
+            targets[base] = ScoringEngine.defaultAdvance(
+                for: outcome,
+                runnerOn: base,
+                bases: store.state.bases
+            )
+        }
+
+        Haptics.shared.tap(enabled: settings.hapticsEnabled)
+        withAnimation(.easeOut(duration: 0.16)) {
+            flow.showsRing = false
+            flow.errorCandidates = []
+            flow.advanceTargets = targets
+            flow.pendingOutcome = outcome
+        }
+    }
+
+    /// Plays where a runner already aboard has a real choice of where to stop.
+    /// A walk moves only forced runners, a strikeout moves nobody, and a home
+    /// run scores everyone — none of those need asking.
+    private static func allowsAdvancePrompt(_ outcome: PlayOutcome) -> Bool {
+        switch outcome {
+        case .hit(let kind, _, _): return kind != .homeRun
+        case .error, .fieldOut, .fieldersChoice, .sacrificeFly: return true
+        default: return false
+        }
+    }
+
+    /// The pitch and its result are one action to the scorer, so they are
+    /// recorded together and undone together.
+    private func record(_ outcome: PlayOutcome, manualAdvances: [ManualAdvance]?) {
         store.beginGroup()
         recordPitch(.inPlay)
-        store.recordPlay(outcome)
+        store.recordPlay(outcome, manualAdvances: manualAdvances)
         store.endGroup()
-
         flow.reset()
     }
 
@@ -554,48 +800,5 @@ struct OneHandedScoringView: View {
         )
         pendingVelocity = nil
         pendingPitchType = nil
-    }
-}
-
-/// Compact single-line picker used for velocity and pitch type.
-struct QuickChipRow<Value: Hashable>: View {
-    var title: String
-    var items: [(String, Value)]
-    var selection: Value?
-    var onSelect: (Value) -> Void
-
-    var body: some View {
-        HStack(spacing: 8) {
-            Text(title)
-                .font(Theme.Typeface.overline(9))
-                .tracking(1.2)
-                .foregroundStyle(Theme.tertiaryText)
-                .frame(width: 30, alignment: .leading)
-
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 7) {
-                    ForEach(items.indices, id: \.self) { index in
-                        let item = items[index]
-                        Button {
-                            onSelect(item.1)
-                        } label: {
-                            Text(item.0)
-                                .font(Theme.Typeface.label(13, weight: .semibold))
-                                .foregroundStyle(
-                                    selection == item.1 ? Theme.accent : Theme.secondaryText
-                                )
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 7)
-                                .luminousCapsule(
-                                    selection == item.1 ? Theme.accent : Theme.neutral,
-                                    isProminent: selection == item.1
-                                )
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-                .padding(.vertical, 1)
-            }
-        }
     }
 }

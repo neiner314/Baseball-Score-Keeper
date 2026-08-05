@@ -112,6 +112,13 @@ enum PitchType: String, Codable, CaseIterable, Identifiable, Sendable {
     static var common: [PitchType] {
         [.fastball, .sinker, .cutter, .slider, .curveball, .changeup]
     }
+
+    /// A generic mix used when a pitcher's real arsenal isn't known — six
+    /// pitches that between them cover almost anyone. Fastball-first, the way
+    /// an arsenal is usually listed and the way it fans onto the pad.
+    static var defaultArsenal: [PitchType] {
+        [.fastball, .slider, .changeup, .curveball, .sinker, .cutter]
+    }
 }
 
 /// A normalized point on the field or in the strike zone. Kept as plain

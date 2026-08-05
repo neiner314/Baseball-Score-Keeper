@@ -8,6 +8,10 @@ import SwiftUI
 struct ScoringContainerView: View {
     @Environment(GameStore.self) private var store
 
+    /// Called to tear down the game and return to the main menu. Defaulted so
+    /// previews can stand the view up on its own.
+    var onExitGame: () -> Void = {}
+
     @State private var showsScorebook = false
     @State private var showsBoxScore = false
     @State private var showsSettings = false
@@ -33,7 +37,7 @@ struct ScoringContainerView: View {
             BoxScoreView().environment(store)
         }
         .sheet(isPresented: $showsSettings) {
-            TrackingSettingsView().environment(store)
+            TrackingSettingsView(onExitGame: onExitGame).environment(store)
         }
         .sheet(isPresented: $showsSubstitution) {
             SubstitutionView(defaultSide: store.state.fieldingSide).environment(store)
