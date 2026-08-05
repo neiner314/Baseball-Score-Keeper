@@ -217,23 +217,38 @@ The live screen carries the same information at a glance: a **base diamond**
 that fills as runners reach, both teams' runs in large type with the batting
 side highlighted, and count and outs as pips.
 
-## The other two layouts
+## The other layout
 
-Cycle between layouts with the top-left button, or set a default in Settings.
+Flip between the two with the top-left button, or set a default in Settings.
 
 | Layout | For |
 | --- | --- |
-| **Pitch-first** | Scoreboard, batter card, thumb cluster |
-| **Full sheet** | Everything visible at once — every rare play is one tap, needs two hands |
-| **One-handed** | Same, plus the big velocity readout |
+| **One-handed** | Thumb cluster in the bottom corner, scored without looking |
+| **Full sheet** | Everything reachable at once on one fixed screen, two hands |
+
+There were three. Two of them were the same one-handed screen with a different
+readout on top, which is a setting rather than a layout, so they're now one.
+Saved games carrying the retired values migrate on load rather than failing to
+decode.
+
+**The full sheet does not scroll.** Header, pitch buttons, field, results and
+the baserunning rail are all fixed rows, and the field absorbs whatever height
+is left over — so the same screen composes on an SE and a Pro Max without a
+scroll view. Results are laid out the way a scorer thinks: everything that puts
+the batter on base in one row, everything that retires him in the row below,
+fourteen outcomes with nothing hidden.
+
+Velocity and pitch type are menus in the bottom rail rather than rows of chips.
+Two taps instead of one, for the two things nobody logs every pitch, and ninety
+points of screen back.
 
 Settings decides how much the live screen has to carry. Turning off pitch
 velocity, ball location, pitch type or foul counts **removes** those controls
 rather than greying them out — fewer things to hit means less looking.
 
-Velocity and pitch type live in a collapsed rail just above the thumb cluster
-rather than open in the middle of the screen. Collapsed, it still shows what's
-armed for the next pitch.
+On the one-handed screen they live in a collapsed rail just above the thumb
+cluster rather than open in the middle of the screen. Collapsed, it still shows
+what's armed for the next pitch.
 
 ## Look
 
@@ -307,7 +322,7 @@ xcodebuild test -scheme BaseballScoreKeeper \
   -destination 'platform=iOS Simulator,name=iPhone 16'
 ```
 
-Roughly 180 tests cover the engine (count handling, forced advancement, the
+Roughly 190 tests cover the engine (count handling, forced advancement, the
 third-out rule that cancels runs, earned vs. unearned runs, walk-offs, extra
 innings, substitutions), scorebook notation, the box score and decision
 assignment, the flick-direction and dial hit-testing maths, the pitch pad

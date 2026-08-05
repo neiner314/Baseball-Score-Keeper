@@ -39,7 +39,6 @@ private struct BallInPlayState {
 /// pitches, not for input.
 struct OneHandedScoringView: View {
     @Environment(GameStore.self) private var store
-    var layout: ScoringLayout
 
     @State private var flow = BallInPlayState()
     @State private var pendingVelocity: Int?
@@ -114,10 +113,6 @@ struct OneHandedScoringView: View {
                 headline: store.lastHeadline
             )
 
-            if layout == .thumbCluster, settings.trackPitchVelocity {
-                velocityReadout
-            }
-
             challengePrompt
 
             Spacer(minLength: 0)
@@ -129,22 +124,6 @@ struct OneHandedScoringView: View {
         .padding(.bottom, 296)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .animation(.easeOut(duration: 0.2), value: store.lastHeadline)
-    }
-
-    /// The big number the pitch-speed crowd came for. Only in the scoreboard
-    /// layout, where the screen exists to be glanced at from a distance.
-    private var velocityReadout: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 5) {
-            Text(store.state.currentAtBatPitches.last?.velocity.map(String.init) ?? "—")
-                .font(Theme.Typeface.display(46))
-                .foregroundStyle(Theme.primaryText)
-            Text("MPH")
-                .font(Theme.Typeface.overline(11))
-                .tracking(1.4)
-                .foregroundStyle(Theme.tertiaryText)
-            Spacer(minLength: 0)
-        }
-        .padding(.horizontal, 4)
     }
 
     /// Only on screen while the call is actually reviewable, which is the rule

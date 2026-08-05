@@ -46,10 +46,10 @@ struct ScoringContainerView: View {
     @ViewBuilder
     private var layoutView: some View {
         switch store.settings.preferredLayout {
-        case .singleSheet:
+        case .fullSheet:
             FullSheetScoringView()
-        case .pitchFirst, .thumbCluster:
-            OneHandedScoringView(layout: store.settings.preferredLayout)
+        case .oneHanded:
+            OneHandedScoringView()
         }
     }
 
@@ -110,8 +110,7 @@ struct ScoringContainerView: View {
             .padding(.top, 44)
     }
 
-    /// Cycles through the three layouts so the scorer can flip between the
-    /// dense sheet and the one-handed cluster without opening settings.
+    /// Flips between the two layouts without opening settings.
     private func cycleLayout() {
         let layouts = ScoringLayout.allCases
         guard let index = layouts.firstIndex(of: store.settings.preferredLayout) else { return }

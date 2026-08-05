@@ -33,10 +33,25 @@ struct FieldMarker: Identifiable, Hashable {
 struct FieldPlotView: View {
     var markers: [FieldMarker] = []
     var selectedPosition: Position?
+    /// The fielding chain entered so far, drawn on the field in order. Each
+    /// fielder picks up a numbered badge, so a long rundown stays readable.
+    var chain: [Position] = []
     var showsPositionNumbers: Bool = true
+    /// Fills the space it is given rather than holding a square aspect. The
+    /// fixed two-handed layout hands it whatever height is left over.
+    var fillsAvailableSpace: Bool = false
     var onPick: ((FieldLocation, Position) -> Void)?
 
+    @ViewBuilder
     var body: some View {
+        if fillsAvailableSpace {
+            field
+        } else {
+            field.aspectRatio(1.05, contentMode: .fit)
+        }
+    }
+
+    private var field: some View {
         GeometryReader { geo in
             let size = geo.size
 
@@ -50,6 +65,8 @@ struct FieldPlotView: View {
                 BasePathsShape()
                     .stroke(Color.white.opacity(0.4), lineWidth: 1.5)
 
+                chainPath(size: size)
+
                 if showsPositionNumbers {
                     positionNumbers(size: size)
                 }
@@ -59,24 +76,47 @@ struct FieldPlotView: View {
             .contentShape(Rectangle())
             .gesture(tapGesture(size: size))
         }
-        .aspectRatio(1.05, contentMode: .fit)
+    }
+
+    /// Plate to the first fielder, then fielder to fielder — the way the ball
+    /// actually travelled.
+    private func chainPath(size: CGSize) -> some View {
+        Path { path in
+            guard !chain.isEmpty, size.width > 0 else { return }
+            path.move(to: FieldGeometry.homePlate(in: size))
+            for position in chain {
+                path.addLine(to: FieldGeometry.point(for: position, in: size))
+            }
+        }
+        .stroke(
+            Theme.accent,
+            style: StrokeStyle(lineWidth: 2.5, lineCap: .round, lineJoin: .round)
+        )
+        .allowsHitTesting(false)
     }
 
     private func positionNumbers(size: CGSize) -> some View {
         ForEach(Position.fielders) { position in
+            let order = chain.lastIndex(of: position).map { $0 + 1 }
+            let isLit = order != nil || selectedPosition == position
+
             Text("\(position.rawValue)")
                 .font(Theme.Typeface.label(12, weight: .bold))
-                .foregroundStyle(
-                    selectedPosition == position ? .white : Theme.primaryText.opacity(0.75)
-                )
-                .frame(width: 26, height: 26)
+                .foregroundStyle(isLit ? .white : Theme.primaryText.opacity(0.75))
+                .frame(width: 30, height: 30)
                 .background(
-                    Circle().fill(
-                        selectedPosition == position
-                            ? Theme.inPlay
-                            : Color.white.opacity(0.55)
-                    )
+                    Circle().fill(isLit ? Theme.accent : Color.white.opacity(0.55))
                 )
+                .overlay(alignment: .topTrailing) {
+                    if let order {
+                        Text("\(order)")
+                            .font(Theme.Typeface.label(9, weight: .heavy))
+                            .foregroundStyle(Theme.background)
+                            .frame(width: 15, height: 15)
+                            .background(Circle().fill(Theme.foul))
+                            .offset(x: 4, y: -4)
+                    }
+                }
                 .position(FieldGeometry.point(for: position, in: size))
         }
     }

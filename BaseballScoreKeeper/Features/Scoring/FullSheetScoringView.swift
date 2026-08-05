@@ -1,10 +1,17 @@
 import SwiftUI
 
-/// The dense layout: one scrolling sheet with every control visible at once.
+/// The two-handed layout: everything reachable at once, on one fixed screen.
 ///
-/// The opposite trade from the one-handed screen — nothing is hidden behind a
-/// gesture, so it needs two hands and a look, but a scorer who wants to record
-/// a rare play never has to go hunting for it.
+/// The trade against the one-handed screen is the opposite one. Nothing is
+/// hidden behind a gesture and nothing scrolls — a rare play is always visible,
+/// at the cost of needing two hands and a look. Since it needs a look anyway,
+/// controls are free to spread out across the whole screen rather than staying
+/// in a thumb's arc.
+///
+/// The layout is deliberately fixed-height: the field takes whatever is left
+/// over after the fixed rows, so the screen composes on any phone without a
+/// scroll view. If something has to give, it's the size of the field, not the
+/// reachability of a button.
 struct FullSheetScoringView: View {
     @Environment(GameStore.self) private var store
 
@@ -19,41 +26,16 @@ struct FullSheetScoringView: View {
     private var settings: TrackingSettings { store.settings }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 14) {
-                ScoreBar(state: store.state, teams: store.teams)
-
-                BatterCard(
-                    batter: store.currentBatter,
-                    position: store.currentBatterPosition,
-                    pitches: store.state.currentAtBatPitches,
-                    bases: store.state.bases,
-                    runnerName: { store.runnerOnBase($0)?.shortName },
-                    headline: store.lastHeadline
-                )
-
-                pitchButtons
-
-                if let pitch = store.challengeablePitch {
-                    ChallengePrompt(pitch: pitch) { showsChallengeSheet = true }
-                        .frame(maxWidth: .infinity, alignment: .center)
-                }
-
-                if settings.trackPitchVelocity || settings.trackPitchType {
-                    detailCard
-                }
-
-                if settings.trackBallLocation {
-                    fieldSection
-                }
-
-                fieldingSection
-                resultSection
-                baserunningSection
-            }
-            .padding(.horizontal, Theme.Metrics.screenMargin)
-            .padding(.bottom, 28)
+        VStack(spacing: 8) {
+            header
+            pitchRow
+            fieldPanel
+            resultPanel
+            bottomRail
         }
+        .padding(.horizontal, 12)
+        .padding(.bottom, 6)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(Theme.background)
         .overlay {
             if showsChallengeSheet, let pitch = store.challengeablePitch {
@@ -73,18 +55,118 @@ struct FullSheetScoringView: View {
         }
     }
 
-    private static let velocityPresets = [82, 88, 92, 95, 98, 102]
+    private static let velocityPresets = [78, 82, 85, 88, 90, 92, 94, 95, 96, 98, 100, 102]
 
-    // MARK: - Pitch buttons
+    // MARK: - Header
 
-    private var pitchButtons: some View {
+    /// Score, count, bases, batter and the last call, in one card. The
+    /// one-handed screen can afford two cards; this one can't.
+    private var header: some View {
         VStack(spacing: 8) {
-            HStack(spacing: 8) {
+            HStack(alignment: .center, spacing: 12) {
+                VStack(alignment: .leading, spacing: 1) {
+                    teamLine(.away)
+                    teamLine(.home)
+                }
+
+                Spacer(minLength: 4)
+
+                VStack(alignment: .trailing, spacing: 5) {
+                    Text(inningText)
+                        .font(Theme.Typeface.label(11, weight: .heavy))
+                        .tracking(1)
+                        .foregroundStyle(Theme.secondaryText)
+                    CountPips(balls: store.state.balls, strikes: store.state.strikes, dotSize: 6)
+                    OutsPips(outs: store.state.outs, dotSize: 6)
+                }
+
+                BaseDiamond(bases: store.state.bases, size: 50)
+            }
+
+            batterLine
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .frame(maxWidth: .infinity)
+        .scorecardSurface(cornerRadius: 16)
+    }
+
+    private func teamLine(_ side: Side) -> some View {
+        let isBatting = store.state.battingSide == side && !store.state.isFinal
+        return HStack(spacing: 7) {
+            Text(store.teams[side].abbreviation)
+                .font(Theme.Typeface.label(13, weight: .heavy))
+                .foregroundStyle(isBatting ? Theme.primaryText : Theme.secondaryText)
+                .frame(width: 38, alignment: .leading)
+            Text("\(store.state.runs(for: side))")
+                .font(Theme.Typeface.display(24))
+                .foregroundStyle(isBatting ? Theme.primaryText : Theme.secondaryText)
+                .contentTransition(.numericText())
+                .animation(.easeOut(duration: 0.2), value: store.state.runs(for: side))
+        }
+    }
+
+    private var batterLine: some View {
+        HStack(spacing: 7) {
+            if let batter = store.currentBatter {
+                Text(batter.number.isEmpty ? "—" : batter.number)
+                    .font(Theme.Typeface.score(11))
+                    .foregroundStyle(Theme.tertiaryText)
+                Text(batter.shortName.uppercased())
+                    .font(Theme.Typeface.label(14, weight: .heavy))
+                    .foregroundStyle(Theme.primaryText)
+                if let position = store.currentBatterPosition {
+                    Text(position.abbreviation)
+                        .font(Theme.Typeface.overline(9))
+                        .foregroundStyle(Theme.tertiaryText)
+                }
+            }
+
+            if !store.state.currentAtBatPitches.isEmpty {
+                Text(store.currentAtBatMarks.joined(separator: " "))
+                    .font(Theme.Typeface.notation(11))
+                    .foregroundStyle(Theme.secondaryText)
+            }
+
+            Spacer(minLength: 0)
+
+            if store.challengeablePitch != nil {
+                Button {
+                    showsChallengeSheet = true
+                } label: {
+                    Text("CHALLENGE")
+                        .font(Theme.Typeface.overline(9))
+                        .tracking(0.8)
+                        .foregroundStyle(Theme.background)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Capsule().fill(Theme.foul))
+                }
+                .buttonStyle(.plain)
+            } else if !store.lastHeadline.isEmpty {
+                Text(store.lastHeadline)
+                    .font(Theme.Typeface.label(11, weight: .medium))
+                    .foregroundStyle(Theme.tertiaryText)
+                    .lineLimit(1)
+            }
+        }
+        .frame(height: 20)
+    }
+
+    private var inningText: String {
+        store.state.isFinal ? "FINAL" : "\(store.state.half == .top ? "▲" : "▼") \(store.state.inning)"
+    }
+
+    // MARK: - Pitches
+
+    private var pitchRow: some View {
+        VStack(spacing: 6) {
+            HStack(spacing: 6) {
                 pitchButton(.ball)
                 pitchButton(.calledStrike)
                 pitchButton(.swingingStrike)
             }
-            HStack(spacing: 8) {
+            HStack(spacing: 6) {
                 pitchButton(.foul)
                 pitchButton(.hitByPitch)
                 pitchButton(.wildPitch)
@@ -97,173 +179,114 @@ struct FullSheetScoringView: View {
             record(pitch: outcome)
         } label: {
             Text(outcome.shortLabel)
-                .font(Theme.Typeface.label(16, weight: .bold))
+                .font(Theme.Typeface.label(15, weight: .heavy))
                 .foregroundStyle(.white)
                 .frame(maxWidth: .infinity)
-                .frame(height: 48)
+                .frame(height: 42)
                 .background(
-                    RoundedRectangle(cornerRadius: Theme.Metrics.tightRadius, style: .continuous)
+                    RoundedRectangle(cornerRadius: 11, style: .continuous)
                         .fill(Theme.color(for: outcome))
                 )
         }
         .buttonStyle(.plain)
     }
 
-    // MARK: - Pitch detail
-
-    private var detailCard: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            if settings.trackPitchVelocity {
-                QuickChipRow(
-                    title: "MPH",
-                    items: Self.velocityPresets.map { ("\($0)", $0) },
-                    selection: pendingVelocity,
-                    onSelect: { pendingVelocity = (pendingVelocity == $0) ? nil : $0 }
-                )
-            }
-            if settings.trackPitchType {
-                QuickChipRow(
-                    title: "TYPE",
-                    items: PitchType.allCases.map { ($0.abbreviation, $0) },
-                    selection: pendingPitchType,
-                    onSelect: { pendingPitchType = (pendingPitchType == $0) ? nil : $0 }
-                )
-            }
-        }
-        .padding(Theme.Metrics.cardPadding)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .scorecardSurface()
-    }
-
     // MARK: - Field
 
-    private var fieldSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Overline("Ball in play — tap where it went")
-
-            FieldPlotView(
-                selectedPosition: chain.last,
-                onPick: { location, fielder in
-                    pickedLocation = location
-                    append(fielder)
-                }
-            )
-            .frame(maxHeight: 240)
-        }
-        .padding(Theme.Metrics.cardPadding)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .scorecardSurface()
+    /// The only flexible row. Everything else is fixed, so this absorbs the
+    /// difference between a Pro Max and an SE.
+    private var fieldPanel: some View {
+        FieldPlotView(
+            selectedPosition: chain.last,
+            chain: chain,
+            fillsAvailableSpace: true,
+            onPick: { location, fielder in
+                pickedLocation = location
+                append(fielder)
+            }
+        )
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .strokeBorder(Theme.hairline, lineWidth: 1)
+        )
+        .overlay(alignment: .topLeading) { chainBadge }
+        .layoutPriority(1)
     }
 
-    // MARK: - Fielding chain
+    /// Sits on the field itself rather than taking a row of its own.
+    private var chainBadge: some View {
+        HStack(spacing: 8) {
+            Text(chain.isEmpty ? "TAP WHO HANDLED IT" : ChainFormatter.text(chain))
+                .font(
+                    chain.isEmpty
+                        ? Theme.Typeface.overline(9)
+                        : Theme.Typeface.notation(18, weight: .heavy)
+                )
+                .tracking(chain.isEmpty ? 1 : 0)
+                .foregroundStyle(chain.isEmpty ? Theme.secondaryText : Theme.primaryText)
 
-    /// The whole point of this section: every fielder who touched the ball, in
-    /// order. Tapping 6 then 4 then 3 gives `6-4-3`; tapping 3 then 1 gives
-    /// `3-1`; a rundown can run as long as it actually ran.
-    private var fieldingSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Overline("Who handled it")
-                Spacer()
-                if !chain.isEmpty {
-                    Button("Clear") { clearPick() }
-                        .font(Theme.Typeface.caption())
+            if !chain.isEmpty {
+                Button {
+                    _ = chain.popLast()
+                } label: {
+                    Image(systemName: "delete.left.fill")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(Theme.secondaryText)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(Text("Remove last fielder"))
+
+                Button {
+                    clearPick()
+                } label: {
+                    Text("CLEAR")
+                        .font(Theme.Typeface.overline(9))
                         .foregroundStyle(Theme.accent)
                 }
+                .buttonStyle(.plain)
             }
-
-            HStack(spacing: 10) {
-                Text(chain.isEmpty ? "—" : ChainFormatter.text(chain))
-                    .font(Theme.Typeface.notation(24, weight: .heavy))
-                    .foregroundStyle(chain.isEmpty ? Theme.tertiaryText : Theme.primaryText)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.5)
-
-                Spacer(minLength: 0)
-
-                if !chain.isEmpty {
-                    Button {
-                        _ = chain.popLast()
-                    } label: {
-                        Image(systemName: "delete.left.fill")
-                            .font(.system(size: 18, weight: .semibold))
-                            .foregroundStyle(Theme.secondaryText)
-                            .frame(width: 40, height: 36)
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(Text("Remove last fielder"))
-                }
-            }
-
-            fielderChips
 
             if settings.notationDetail == .full, !chain.isEmpty {
-                trajectoryPicker
+                trajectoryMenu
             }
         }
-        .padding(Theme.Metrics.cardPadding)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .scorecardSurface()
+        .padding(.horizontal, 10)
+        .padding(.vertical, 7)
+        .background(Capsule().fill(Theme.background.opacity(0.82)))
+        .padding(8)
     }
 
-    private var fielderChips: some View {
-        HStack(spacing: 6) {
-            ForEach(Position.fielders) { position in
-                Button {
-                    append(position)
-                } label: {
-                    Text("\(position.rawValue)")
-                        .font(Theme.Typeface.label(14, weight: .bold))
-                        .frame(width: 32, height: 32)
-                        .background(
-                            Circle().fill(
-                                chain.contains(position) ? Theme.accent : Theme.surfaceRaised
-                            )
-                        )
-                        .foregroundStyle(
-                            chain.contains(position) ? Theme.background : Theme.primaryText
-                        )
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel(Text(position.fullName))
-            }
-        }
-    }
-
-    private var trajectoryPicker: some View {
-        HStack(spacing: 6) {
+    private var trajectoryMenu: some View {
+        Menu {
             ForEach(Trajectory.allCases) { option in
-                Button {
-                    trajectory = option
-                } label: {
-                    Text(option.label)
-                        .font(Theme.Typeface.label(11, weight: .bold))
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 6)
-                        .background(
-                            Capsule().fill(option == trajectory ? Theme.accent : Theme.surfaceRaised)
-                        )
-                        .foregroundStyle(
-                            option == trajectory ? Theme.background : Theme.secondaryText
-                        )
-                }
-                .buttonStyle(.plain)
+                Button(option.label) { trajectory = option }
             }
+        } label: {
+            Text(trajectory.label.uppercased())
+                .font(Theme.Typeface.overline(9))
+                .foregroundStyle(Theme.accent)
         }
     }
 
     // MARK: - Results
 
-    private var resultSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Overline("Result")
-
-            FlowRow(spacing: 8) {
-                ForEach(BallInPlayChoice.allCases) { choice in
+    /// Two rows, grouped the way a scorer thinks: reached on top, retired
+    /// below. Fourteen outcomes with nothing hidden and nothing to scroll.
+    private var resultPanel: some View {
+        VStack(spacing: 6) {
+            HStack(spacing: 5) {
+                ForEach(Self.reachedChoices) { choice in
                     resultButton(choice)
                 }
                 directButton("BB", tint: Theme.ball) {
                     store.recordPlay(.walk(intentional: false))
+                }
+            }
+            HStack(spacing: 5) {
+                ForEach(Self.retiredChoices) { choice in
+                    resultButton(choice)
                 }
                 directButton("K", tint: Theme.miss) {
                     store.recordPlay(.strikeout(looking: false, uncaught: false))
@@ -272,17 +295,13 @@ struct FullSheetScoringView: View {
                     store.recordPlay(.strikeout(looking: true, uncaught: false))
                 }
             }
-
-            if chain.isEmpty {
-                Text("Hits and home runs don't need a fielder. Everything else does.")
-                    .font(Theme.Typeface.caption())
-                    .foregroundStyle(Theme.tertiaryText)
-            }
         }
-        .padding(Theme.Metrics.cardPadding)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .scorecardSurface()
     }
+
+    private static let reachedChoices: [BallInPlayChoice] =
+        [.single, .double, .triple, .homeRun, .error, .fieldersChoice]
+    private static let retiredChoices: [BallInPlayChoice] =
+        [.out, .doublePlay, .triplePlay, .sacrificeFly, .sacrificeBunt]
 
     private func resultButton(_ choice: BallInPlayChoice) -> some View {
         let enabled = !choice.requiresFielder || !chain.isEmpty
@@ -290,11 +309,14 @@ struct FullSheetScoringView: View {
             commit(choice)
         } label: {
             Text(choice.title)
-                .font(Theme.Typeface.label(14, weight: .bold))
+                .font(Theme.Typeface.label(14, weight: .heavy))
                 .foregroundStyle(.white)
-                .padding(.horizontal, 16)
+                .frame(maxWidth: .infinity)
                 .frame(height: 40)
-                .background(Capsule().fill(choice.tint.opacity(enabled ? 1 : 0.25)))
+                .background(
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .fill(choice.tint.opacity(enabled ? 1 : 0.22))
+                )
         }
         .buttonStyle(.plain)
         .disabled(!enabled)
@@ -303,44 +325,111 @@ struct FullSheetScoringView: View {
     private func directButton(_ title: String, tint: Color, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Text(title)
-                .font(Theme.Typeface.label(14, weight: .bold))
+                .font(Theme.Typeface.label(14, weight: .heavy))
                 .foregroundStyle(.white)
-                .padding(.horizontal, 16)
+                .frame(maxWidth: .infinity)
                 .frame(height: 40)
-                .background(Capsule().fill(tint))
+                .background(
+                    RoundedRectangle(cornerRadius: 10, style: .continuous).fill(tint)
+                )
         }
         .buttonStyle(.plain)
     }
 
-    // MARK: - Baserunning
+    // MARK: - Bottom rail
 
-    private var baserunningSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Overline("Baserunning")
+    /// Baserunning and pitch detail on one line. Velocity and type are menus
+    /// rather than chip rows — two taps instead of one, for the two things
+    /// nobody logs on every pitch, and ninety points of screen back.
+    private var bottomRail: some View {
+        HStack(spacing: 6) {
+            // Only this strip can ever scroll, and only with the bases loaded.
+            // A rail that reflowed to two rows would move every button below it.
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 6) {
+                    ForEach(store.state.bases.occupied) { base in
+                        railButton("SB\(base.rawValue)", tint: Theme.ball, label: "Stolen base from \(base.label)") {
+                            store.record(.stolenBase(from: base))
+                        }
+                        railButton("CS\(base.rawValue)", tint: Theme.miss, label: "Caught stealing from \(base.label)") {
+                            store.record(.caughtStealing(from: base))
+                        }
+                    }
+                    railButton("PB", tint: Theme.neutral, label: "Passed ball, runners advance") {
+                        store.record(.passedBallAdvance)
+                    }
+                    railButton("BK", tint: Theme.neutral, label: "Balk") {
+                        store.record(.balk)
+                    }
+                }
+            }
 
-            FlowRow(spacing: 8) {
-                ForEach(store.state.bases.occupied) { base in
-                    directButton("SB \(base.label)", tint: Theme.ball) {
-                        store.record(.stolenBase(from: base))
+            Spacer(minLength: 0)
+
+            if settings.trackPitchVelocity {
+                detailMenu(
+                    title: pendingVelocity.map(String.init) ?? "MPH",
+                    isSet: pendingVelocity != nil
+                ) {
+                    Button("Clear") { pendingVelocity = nil }
+                    ForEach(Self.velocityPresets, id: \.self) { value in
+                        Button("\(value)") { pendingVelocity = value }
                     }
-                    directButton("CS \(base.label)", tint: Theme.miss) {
-                        store.record(.caughtStealing(from: base))
+                }
+            }
+
+            if settings.trackPitchType {
+                detailMenu(
+                    title: pendingPitchType?.abbreviation ?? "TYPE",
+                    isSet: pendingPitchType != nil
+                ) {
+                    Button("Clear") { pendingPitchType = nil }
+                    ForEach(PitchType.allCases) { type in
+                        Button(type.abbreviation) { pendingPitchType = type }
                     }
-                }
-                directButton("WP", tint: Theme.neutral) {
-                    store.record(.wildPitchAdvance)
-                }
-                directButton("PB", tint: Theme.neutral) {
-                    store.record(.passedBallAdvance)
-                }
-                directButton("Balk", tint: Theme.neutral) {
-                    store.record(.balk)
                 }
             }
         }
-        .padding(Theme.Metrics.cardPadding)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .scorecardSurface()
+        .frame(height: 34)
+    }
+
+    private func railButton(
+        _ title: String,
+        tint: Color,
+        label: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Text(title)
+                .font(Theme.Typeface.label(12, weight: .bold))
+                .foregroundStyle(tint)
+                .padding(.horizontal, 10)
+                .frame(height: 30)
+                .background(Capsule().fill(Theme.surfaceRaised))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(Text(label))
+    }
+
+    private func detailMenu<Content: View>(
+        title: String,
+        isSet: Bool,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        Menu {
+            content()
+        } label: {
+            HStack(spacing: 4) {
+                Text(title)
+                    .font(Theme.Typeface.label(12, weight: .bold))
+                Image(systemName: "chevron.up.chevron.down")
+                    .font(.system(size: 8, weight: .bold))
+            }
+            .foregroundStyle(isSet ? Theme.background : Theme.secondaryText)
+            .padding(.horizontal, 10)
+            .frame(height: 30)
+            .background(Capsule().fill(isSet ? Theme.accent : Theme.surfaceRaised))
+        }
     }
 
     // MARK: - Actions
@@ -364,7 +453,7 @@ struct FullSheetScoringView: View {
             let outcome = choice.outcome(
                 chain: chain,
                 trajectory: trajectory,
-                location: pickedLocation
+                location: settings.trackBallLocation ? pickedLocation : nil
             )
         else { return }
 
@@ -379,61 +468,5 @@ struct FullSheetScoringView: View {
     private func clearPick() {
         chain = []
         pickedLocation = nil
-    }
-}
-
-/// Minimal wrapping row. `Layout` rather than a stack of stacks so the buttons
-/// reflow cleanly at any Dynamic Type size.
-struct FlowRow: Layout {
-    var spacing: CGFloat = 8
-
-    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
-        let maxWidth = proposal.width ?? .infinity
-        var rowWidth: CGFloat = 0
-        var rowHeight: CGFloat = 0
-        var totalHeight: CGFloat = 0
-        var totalWidth: CGFloat = 0
-
-        for subview in subviews {
-            let size = subview.sizeThatFits(.unspecified)
-            if rowWidth + size.width > maxWidth, rowWidth > 0 {
-                totalHeight += rowHeight + spacing
-                totalWidth = max(totalWidth, rowWidth - spacing)
-                rowWidth = 0
-                rowHeight = 0
-            }
-            rowWidth += size.width + spacing
-            rowHeight = max(rowHeight, size.height)
-        }
-
-        totalHeight += rowHeight
-        totalWidth = max(totalWidth, rowWidth - spacing)
-        return CGSize(width: min(totalWidth, maxWidth), height: totalHeight)
-    }
-
-    func placeSubviews(
-        in bounds: CGRect,
-        proposal: ProposedViewSize,
-        subviews: Subviews,
-        cache: inout ()
-    ) {
-        var x = bounds.minX
-        var y = bounds.minY
-        var rowHeight: CGFloat = 0
-
-        for subview in subviews {
-            let size = subview.sizeThatFits(.unspecified)
-            if x + size.width > bounds.maxX, x > bounds.minX {
-                x = bounds.minX
-                y += rowHeight + spacing
-                rowHeight = 0
-            }
-            subview.place(
-                at: CGPoint(x: x, y: y),
-                proposal: ProposedViewSize(size)
-            )
-            x += size.width + spacing
-            rowHeight = max(rowHeight, size.height)
-        }
     }
 }

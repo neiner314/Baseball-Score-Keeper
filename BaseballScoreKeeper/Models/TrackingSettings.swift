@@ -1,42 +1,56 @@
 import Foundation
 
-/// Which of the three layouts from the design set is showing.
+/// Which of the two layouts is showing.
+///
+/// There used to be three, but two of them were the same one-handed screen with
+/// a different readout on top, which is a setting rather than a layout. There
+/// is now one thumb-driven screen and one two-handed screen, and they are
+/// genuinely different shapes.
 enum ScoringLayout: String, Codable, CaseIterable, Identifiable, Sendable {
-    /// Pitch-first, flips to the field view when a ball is put in play.
-    case pitchFirst
-    /// Everything on one scrolling sheet.
-    case singleSheet
-    /// One-handed thumb cluster with a big scoreboard count.
-    case thumbCluster
+    /// Thumb cluster in the bottom corner, scored without looking.
+    case oneHanded
+    /// Everything reachable at once on a single fixed screen. Two hands, no
+    /// scrolling.
+    case fullSheet
 
     var id: String { rawValue }
 
     var title: String {
         switch self {
-        case .pitchFirst: "Pitch-first, flips to field view"
-        case .singleSheet: "Everything on one scrolling sheet"
-        case .thumbCluster: "One-handed thumb cluster"
+        case .oneHanded: "One thumb, no looking"
+        case .fullSheet: "Everything at once, two hands"
         }
     }
 
     var shortTitle: String {
         switch self {
-        case .pitchFirst: "Pitch-first"
-        case .singleSheet: "Full sheet"
-        case .thumbCluster: "One-handed"
+        case .oneHanded: "One-handed"
+        case .fullSheet: "Full sheet"
         }
     }
 
     var symbolName: String {
         switch self {
-        case .pitchFirst: "figure.baseball"
-        case .singleSheet: "list.bullet.rectangle"
-        case .thumbCluster: "hand.point.up.left.fill"
+        case .oneHanded: "hand.point.up.left.fill"
+        case .fullSheet: "square.grid.2x2"
         }
     }
 
-    /// The two thumb-driven layouts share the flick dock.
-    var usesFlickDock: Bool { self != .singleSheet }
+    var usesFlickDock: Bool { self == .oneHanded }
+
+    /// Migrates the three-layout era. A raw value that no longer exists would
+    /// otherwise throw and take the whole saved game down with it, so the two
+    /// retired cases are mapped onto the screen that replaced them.
+    init(from decoder: Decoder) throws {
+        let raw = try decoder.singleValueContainer().decode(String.self)
+        switch raw {
+        case ScoringLayout.fullSheet.rawValue, "singleSheet":
+            self = .fullSheet
+        default:
+            // "oneHanded", and the retired "pitchFirst" / "thumbCluster".
+            self = .oneHanded
+        }
+    }
 }
 
 enum NotationDetail: String, Codable, CaseIterable, Identifiable, Sendable {
@@ -95,7 +109,7 @@ struct TrackingSettings: Codable, Hashable, Sendable {
     /// Ball-strike challenges. Off for leagues that don't review calls.
     var trackChallenges: Bool = true
     var notationDetail: NotationDetail = .standard
-    var preferredLayout: ScoringLayout = .pitchFirst
+    var preferredLayout: ScoringLayout = .oneHanded
     var handedness: Handedness = .right
     var appearance: AppAppearance = .dark
     var hapticsEnabled: Bool = true
