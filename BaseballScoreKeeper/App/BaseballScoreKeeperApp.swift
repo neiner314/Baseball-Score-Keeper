@@ -10,45 +10,31 @@ struct BaseballScoreKeeperApp: App {
     }
 }
 
-/// Picks up where the scorer left off, or offers a new game.
+/// Opens on the main menu, and swaps to the scoring screen once a game is
+/// chosen or built. A game in progress survives the app being killed between
+/// innings — it's saved to the archive and offered back as "Resume" on the menu
+/// rather than forced open on launch.
 struct RootView: View {
     @State private var store: GameStore?
-    @State private var hasCheckedForSavedGame = false
     @State private var appearance: AppAppearance = AppPreferences.defaultTrackingSettings.appearance
 
     var body: some View {
         Group {
             if let store {
-                ScoringContainerView()
+                ScoringContainerView(onExitGame: { self.store = nil })
                     .environment(store)
                     .onChange(of: store.settings.appearance) { _, newValue in
                         appearance = newValue
                     }
                     .onAppear { appearance = store.settings.appearance }
-            } else if hasCheckedForSavedGame {
-                NewGameView { document in
-                    store = GameStore(document: document)
-                }
             } else {
-                ProgressView()
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .appBackground()
+                MainMenuView(
+                    onStartGame: { document in store = GameStore(document: document) },
+                    appearance: $appearance
+                )
             }
         }
         .preferredColorScheme(appearance.colorScheme)
-        .task {
-            await restoreLastGame()
-        }
-    }
-
-    /// A game in progress should survive the app being killed between innings.
-    @MainActor
-    private func restoreLastGame() async {
-        defer { hasCheckedForSavedGame = true }
-        guard store == nil, let id = AppPreferences.lastGameID else { return }
-        guard let document = try? await GameArchive.shared.load(id: id) else { return }
-        guard !document.events.isEmpty else { return }
-        store = GameStore(document: document)
     }
 }
 

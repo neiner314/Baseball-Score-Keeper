@@ -4,6 +4,12 @@ import SwiftUI
 /// can hit Start and fix the names between innings.
 struct NewGameView: View {
     var onStart: (GameDocument) -> Void
+    /// Opens straight into the league importer — the menu's "Import Game" tile.
+    var startWithImport: Bool = false
+    /// Pre-loads the away side, used when starting a game from a saved team.
+    var initialAway: TeamRoster?
+
+    @Environment(\.dismiss) private var dismiss
 
     @State private var away = GameFactory.placeholderRoster(name: "Away", abbreviation: "AWY")
     @State private var home = GameFactory.placeholderRoster(name: "Home", abbreviation: "HME")
@@ -13,7 +19,9 @@ struct NewGameView: View {
     @State private var settings = AppPreferences.defaultTrackingSettings
     @State private var showsGameImport = false
     @State private var importingSide: Side?
+    @State private var loadingSide: Side?
     @State private var importedSetup: RemoteGameSetup?
+    @State private var didApplyInitial = false
 
     var body: some View {
         NavigationStack {
@@ -53,11 +61,25 @@ struct NewGameView: View {
                             NavigationRowLabel(home.name, value: "\(home.players.count) players")
                         }
                         Divider().overlay(Theme.hairline)
+                        ActionRow("Load away from My Teams", symbol: "person.crop.rectangle.stack") {
+                            loadingSide = .away
+                        }
+                        ActionRow("Load home from My Teams", symbol: "person.crop.rectangle.stack") {
+                            loadingSide = .home
+                        }
+                        Divider().overlay(Theme.hairline)
                         ActionRow("Paste \(away.name) roster", symbol: "doc.on.clipboard") {
                             importingSide = .away
                         }
                         ActionRow("Paste \(home.name) roster", symbol: "doc.on.clipboard") {
                             importingSide = .home
+                        }
+                        Divider().overlay(Theme.hairline)
+                        ActionRow("Save \(away.name) to My Teams", symbol: "square.and.arrow.down") {
+                            saveToMyTeams(away)
+                        }
+                        ActionRow("Save \(home.name) to My Teams", symbol: "square.and.arrow.down") {
+                            saveToMyTeams(home)
                         }
                     }
 
@@ -102,6 +124,11 @@ struct NewGameView: View {
             }
             .appBackground()
             .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Close") { dismiss() }
+                }
+            }
             .sheet(isPresented: $showsGameImport) {
                 GameImportView { setup in
                     apply(setup)
@@ -109,13 +136,37 @@ struct NewGameView: View {
             }
             .sheet(item: $importingSide) { side in
                 RosterImportView(teamLabel: side == .away ? "away roster" : "home roster") { roster in
-                    switch side {
-                    case .away: away = roster
-                    case .home: home = roster
-                    }
+                    setRoster(roster, for: side)
                 }
             }
+            .sheet(item: $loadingSide) { side in
+                SavedTeamPickerView { roster in
+                    setRoster(roster, for: side)
+                }
+            }
+            .onAppear(perform: applyInitialState)
         }
+    }
+
+    /// Runs once: drops in a team started from the library, and jumps straight
+    /// to the importer if that's the tile we came in on.
+    private func applyInitialState() {
+        guard !didApplyInitial else { return }
+        didApplyInitial = true
+        if let initialAway { away = initialAway }
+        if startWithImport { showsGameImport = true }
+    }
+
+    private func setRoster(_ roster: TeamRoster, for side: Side) {
+        switch side {
+        case .away: away = roster
+        case .home: home = roster
+        }
+    }
+
+    private func saveToMyTeams(_ roster: TeamRoster) {
+        Task { try? await TeamStore.shared.save(SavedTeam(roster: roster)) }
+        Haptics.shared.commit(enabled: settings.hapticsEnabled)
     }
 
     private var title: some View {

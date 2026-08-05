@@ -13,6 +13,12 @@ struct TrackingSettingsView: View {
     @Environment(GameStore.self) private var store
     @Environment(\.dismiss) private var dismiss
 
+    /// Called to leave the game and return to the main menu. The container
+    /// owns the navigation; this screen just asks for it.
+    var onExitGame: () -> Void = {}
+
+    @State private var showsExitConfirmation = false
+
     var body: some View {
         @Bindable var store = store
 
@@ -42,11 +48,6 @@ struct TrackingSettingsView: View {
                             "Foul & pitch counts",
                             detail: "Running foul tally per at-bat",
                             isOn: $store.settings.trackFoulAndPitchCounts
-                        )
-                        SettingsToggle(
-                            "Strike-zone location",
-                            detail: "Where it crossed the plate",
-                            isOn: $store.settings.trackPitchLocation
                         )
                         SettingsToggle(
                             "Ball-strike challenges",
@@ -106,11 +107,6 @@ struct TrackingSettingsView: View {
                             detail: "Says the call out loud, ducks other audio",
                             isOn: $store.settings.spokenConfirmations
                         )
-                        SettingsToggle(
-                            "Drag straight to an out",
-                            detail: "Releasing the dial on a fielder scores it as an out with no result ring",
-                            isOn: $store.settings.assumeOutOnDialRelease
-                        )
                     }
 
                     SettingsGroup("Rules") {
@@ -126,6 +122,19 @@ struct TrackingSettingsView: View {
                                 + "\(store.teams.home.abbreviation) \(store.challengesRemaining.home)"
                         )
                     }
+
+                    SettingsGroup(
+                        "This game",
+                        footer: "Scoring is saved automatically, so you can leave and come back to it anytime."
+                    ) {
+                        SettingsActionRow(
+                            title: store.state.isFinal ? "Finish Scoring" : "Return to Main Menu",
+                            detail: "Go back to the main menu",
+                            symbol: "rectangle.portrait.and.arrow.right"
+                        ) {
+                            showsExitConfirmation = true
+                        }
+                    }
                 }
                 .padding(.horizontal, Theme.Metrics.screenMargin)
                 .padding(.vertical, 16)
@@ -138,6 +147,24 @@ struct TrackingSettingsView: View {
                     Button("Done") { dismiss() }
                 }
             }
+            .confirmationDialog(
+                "Leave this game?",
+                isPresented: $showsExitConfirmation,
+                titleVisibility: .visible
+            ) {
+                Button("Return to Main Menu") {
+                    dismiss()
+                    onExitGame()
+                }
+                Button("Keep Scoring", role: .cancel) {}
+            } message: {
+                Text("Your progress is saved — you can pick this game back up from where you left off.")
+            }
+            // The sheet carries its own trait environment, so the root's
+            // color-scheme change doesn't reach it while it's open. Driving it
+            // from the live setting here makes the switch take effect at once
+            // rather than on the next time the sheet is opened.
+            .preferredColorScheme(store.settings.appearance.colorScheme)
         }
     }
 }
@@ -263,6 +290,45 @@ struct InfoRow: View {
                 .multilineTextAlignment(.trailing)
         }
         .padding(.vertical, 11)
+    }
+}
+
+/// A tappable settings row that performs an action rather than holding a value:
+/// an icon, a title with a hint, and a chevron to say it goes somewhere.
+struct SettingsActionRow: View {
+    var title: String
+    var detail: String
+    var symbol: String
+    var action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 12) {
+                Image(systemName: symbol)
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(Theme.accent)
+                    .frame(width: 22)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .font(Theme.Typeface.label(15))
+                        .foregroundStyle(Theme.primaryText)
+                    Text(detail)
+                        .font(Theme.Typeface.caption())
+                        .foregroundStyle(Theme.tertiaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Spacer(minLength: 0)
+
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(Theme.tertiaryText)
+            }
+            .padding(.vertical, 11)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 }
 

@@ -70,50 +70,72 @@ struct BatterCard: View {
     var batter: Player?
     var position: Position?
     var pitches: [Pitch]
-    var bases: Bases
-    var runnerName: (Base) -> String?
+    var battingLine: BattingLine?
+    /// The batter's season line from the league feed. When present it's shown
+    /// instead of this game's line, tagged "SZN" so it's clear which it is.
+    var seasonStats: SeasonHittingStats? = nil
     var headline: String
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                if let batter {
-                    Text(batter.number.isEmpty ? "—" : batter.number)
-                        .font(Theme.Typeface.score(15))
-                        .foregroundStyle(Theme.tertiaryText)
-                        .frame(minWidth: 20, alignment: .trailing)
-                    Text(batter.shortName.uppercased())
-                        .font(Theme.Typeface.label(20, weight: .heavy))
-                        .foregroundStyle(Theme.primaryText)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.7)
-                    if let position {
-                        Text(position.abbreviation)
-                            .font(Theme.Typeface.caption())
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .top, spacing: 10) {
+                // Name and this game's line on the left; the pitches flow to the
+                // right of them and wrap, so a long at-bat grows down by a row
+                // rather than stretching the card off the screen.
+                VStack(alignment: .leading, spacing: 6) {
+                    if let batter {
+                        HStack(alignment: .firstTextBaseline, spacing: 8) {
+                            Text(batter.number.isEmpty ? "—" : batter.number)
+                                .font(Theme.Typeface.score(15))
+                                .foregroundStyle(Theme.tertiaryText)
+                                .frame(minWidth: 20, alignment: .trailing)
+                            Text(batter.shortName.uppercased())
+                                .font(Theme.Typeface.label(20, weight: .heavy))
+                                .foregroundStyle(Theme.primaryText)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.7)
+                            if let position {
+                                Text(position.abbreviation)
+                                    .font(Theme.Typeface.caption())
+                                    .foregroundStyle(Theme.tertiaryText)
+                            }
+                        }
+
+                        if let seasonStats {
+                            statGrid(
+                                tag: "SZN",
+                                average: seasonStats.average,
+                                homeRuns: seasonStats.homeRuns,
+                                rbis: seasonStats.rbis,
+                                onBase: seasonStats.onBase
+                            )
+                        } else if let battingLine {
+                            statGrid(
+                                tag: nil,
+                                average: battingLine.average,
+                                homeRuns: battingLine.homeRuns,
+                                rbis: battingLine.rbis,
+                                onBase: Self.onBase(battingLine)
+                            )
+                        }
+                    } else {
+                        Text("LINEUP DUE UP")
+                            .font(Theme.Typeface.label(16, weight: .heavy))
                             .foregroundStyle(Theme.tertiaryText)
                     }
-                } else {
-                    Text("LINEUP DUE UP")
-                        .font(Theme.Typeface.label(16, weight: .heavy))
-                        .foregroundStyle(Theme.tertiaryText)
                 }
-                Spacer(minLength: 0)
-            }
+                .layoutPriority(1)
 
-            if !pitches.isEmpty {
-                HStack(spacing: 5) {
-                    ForEach(pitches) { pitch in
-                        PitchMark(pitch: pitch)
+                if !pitches.isEmpty {
+                    FlowLayout(spacing: 5, lineSpacing: 5) {
+                        ForEach(pitches) { pitch in
+                            PitchMark(pitch: pitch)
+                        }
                     }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                } else {
+                    Spacer(minLength: 0)
                 }
-            }
-
-            if !runnersText.isEmpty {
-                Text(runnersText)
-                    .font(Theme.Typeface.caption())
-                    .foregroundStyle(Theme.secondaryText)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
             }
 
             if !headline.isEmpty {
@@ -130,14 +152,218 @@ struct BatterCard: View {
         .scorecardSurface()
     }
 
-    /// "1st Judge · 3rd Soto" — names, not just base labels, because the point
-    /// of knowing who's on is knowing whether to expect them to run.
-    private var runnersText: String {
-        let parts = bases.occupied.compactMap { base -> String? in
-            guard let name = runnerName(base) else { return base.label }
-            return "\(base.label) \(name)"
+    /// The slash line under the name: average and home runs on top, runs batted
+    /// in and on-base percentage stacked beneath. Two narrow columns rather than
+    /// one long row, so the pitch marks have the whole right side of the card to
+    /// flow into. `tag` marks it as the season line when it isn't this game's.
+    private func statGrid(
+        tag: String?,
+        average: Double,
+        homeRuns: Int,
+        rbis: Int,
+        onBase: Double
+    ) -> some View {
+        HStack(alignment: .top, spacing: 8) {
+            if let tag {
+                Text(tag)
+                    .font(Theme.Typeface.overline(8))
+                    .tracking(0.5)
+                    .foregroundStyle(Theme.accent)
+                    .padding(.top, 1)
+            }
+            Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 3) {
+                GridRow {
+                    inlineStat("AVG", Self.rate(average))
+                    inlineStat("HR", "\(homeRuns)")
+                }
+                GridRow {
+                    inlineStat("RBI", "\(rbis)")
+                    inlineStat("OBP", Self.rate(onBase))
+                }
+            }
         }
-        return parts.joined(separator: "  ·  ")
+        .lineLimit(1)
+        .minimumScaleFactor(0.7)
+    }
+
+    private func inlineStat(_ label: String, _ value: String) -> some View {
+        HStack(spacing: 3) {
+            Text(label)
+                .font(Theme.Typeface.overline(8))
+                .tracking(0.5)
+                .foregroundStyle(Theme.tertiaryText)
+                .frame(width: 24, alignment: .leading)
+            Text(value)
+                .font(Theme.Typeface.score(12))
+                .foregroundStyle(Theme.secondaryText)
+                .contentTransition(.numericText())
+        }
+    }
+
+    /// On-base percentage from the game line. No hit-by-pitch or sac flies are
+    /// tracked per batter, so this is (H + BB) / (AB + BB) — the same shape,
+    /// exact for the overwhelming majority of plate appearances.
+    private static func onBase(_ line: BattingLine) -> Double {
+        let denominator = line.atBats + line.walks
+        guard denominator > 0 else { return 0 }
+        return Double(line.hits + line.walks) / Double(denominator)
+    }
+
+    /// Baseball's leading-zero-less rate: ".333", or "1.000" when it's perfect.
+    private static func rate(_ value: Double) -> String {
+        let text = String(format: "%.3f", value)
+        return value < 1 ? String(text.dropFirst()) : text
+    }
+}
+
+/// A floating panel for the pitcher currently on the mound: who he is, his
+/// live pitch count, and the line he's thrown so far this game.
+///
+/// The numbers are the scorer's own — everything here is folded out of the
+/// event log, not fetched — so it stays honest with no signal and reads the
+/// same for a sandlot game as for a big-league one.
+struct PitcherPanel: View {
+    var pitcher: Player?
+    var line: PitchingLine?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text("ON THE MOUND")
+                    .font(Theme.Typeface.overline(9))
+                    .tracking(1.4)
+                    .foregroundStyle(Theme.tertiaryText)
+
+                Spacer(minLength: 0)
+
+                if let line {
+                    HStack(alignment: .firstTextBaseline, spacing: 4) {
+                        Text("\(line.pitches)")
+                            .font(Theme.Typeface.score(18))
+                            .foregroundStyle(Theme.accent)
+                            .contentTransition(.numericText())
+                        Text("P")
+                            .font(Theme.Typeface.overline(10))
+                            .tracking(1.1)
+                            .foregroundStyle(Theme.tertiaryText)
+                    }
+                }
+            }
+
+            if let pitcher {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Text(pitcher.number.isEmpty ? "—" : pitcher.number)
+                        .font(Theme.Typeface.score(14))
+                        .foregroundStyle(Theme.tertiaryText)
+                        .frame(minWidth: 20, alignment: .trailing)
+                    Text(pitcher.shortName.uppercased())
+                        .font(Theme.Typeface.label(18, weight: .heavy))
+                        .foregroundStyle(Theme.primaryText)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                    Text(pitcher.throwsWith == .left ? "LHP" : "RHP")
+                        .font(Theme.Typeface.caption())
+                        .foregroundStyle(Theme.tertiaryText)
+                    Spacer(minLength: 0)
+                }
+            } else {
+                Text("NO PITCHER SET")
+                    .font(Theme.Typeface.label(16, weight: .heavy))
+                    .foregroundStyle(Theme.tertiaryText)
+            }
+
+            if let line {
+                HStack(spacing: 0) {
+                    stat("IP", line.inningsPitched)
+                    stat("H", "\(line.hits)")
+                    stat("R", "\(line.runs)")
+                    stat("ER", "\(line.earnedRuns)")
+                    stat("BB", "\(line.walks)")
+                    stat("K", "\(line.strikeouts)")
+                }
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel(Text(statSummary(line)))
+            }
+        }
+        .padding(Theme.Metrics.cardPadding)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .scorecardSurface()
+        .animation(.easeOut(duration: 0.2), value: line)
+    }
+
+    /// One column of the stat line: the number over its label. The value is
+    /// held to a single line and allowed to shrink, so a decimal like "0.2"
+    /// stays on one row in a narrow column instead of stacking digit by digit.
+    private func stat(_ label: String, _ value: String) -> some View {
+        VStack(spacing: 3) {
+            Text(value)
+                .font(Theme.Typeface.score(14))
+                .foregroundStyle(Theme.primaryText)
+                .lineLimit(1)
+                .minimumScaleFactor(0.5)
+                .contentTransition(.numericText())
+            Text(label)
+                .font(Theme.Typeface.overline(9))
+                .tracking(0.8)
+                .foregroundStyle(Theme.tertiaryText)
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    private func statSummary(_ line: PitchingLine) -> String {
+        "\(line.inningsPitched) innings, \(line.hits) hits, \(line.runs) runs, "
+            + "\(line.earnedRuns) earned, \(line.walks) walks, \(line.strikeouts) strikeouts, "
+            + "\(line.pitches) pitches"
+    }
+}
+
+/// Lays subviews out left to right, wrapping onto a new line whenever the next
+/// one would overflow the width it's given. Used for the at-bat's pitch marks
+/// so a long battle flows downward instead of pushing its card wider.
+struct FlowLayout: Layout {
+    var spacing: CGFloat = 5
+    var lineSpacing: CGFloat = 5
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout Void) -> CGSize {
+        let maxWidth = proposal.width ?? .infinity
+        var x: CGFloat = 0
+        var y: CGFloat = 0
+        var rowHeight: CGFloat = 0
+        var widest: CGFloat = 0
+
+        for subview in subviews {
+            let size = subview.sizeThatFits(.unspecified)
+            if x > 0, x + size.width > maxWidth {
+                widest = max(widest, x - spacing)
+                x = 0
+                y += rowHeight + lineSpacing
+                rowHeight = 0
+            }
+            x += size.width + spacing
+            rowHeight = max(rowHeight, size.height)
+        }
+        widest = max(widest, x - spacing)
+
+        let width = maxWidth == .infinity ? widest : min(widest, maxWidth)
+        return CGSize(width: max(0, width), height: y + rowHeight)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout Void) {
+        var x = bounds.minX
+        var y = bounds.minY
+        var rowHeight: CGFloat = 0
+
+        for subview in subviews {
+            let size = subview.sizeThatFits(.unspecified)
+            if x > bounds.minX, x + size.width > bounds.maxX {
+                x = bounds.minX
+                y += rowHeight + lineSpacing
+                rowHeight = 0
+            }
+            subview.place(at: CGPoint(x: x, y: y), anchor: .topLeading, proposal: ProposedViewSize(size))
+            x += size.width + spacing
+            rowHeight = max(rowHeight, size.height)
+        }
     }
 }
 

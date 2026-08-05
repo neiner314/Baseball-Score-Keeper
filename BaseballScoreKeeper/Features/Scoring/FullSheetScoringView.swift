@@ -55,8 +55,6 @@ struct FullSheetScoringView: View {
         }
     }
 
-    private static let velocityPresets = [78, 82, 85, 88, 90, 92, 94, 95, 96, 98, 100, 102]
-
     // MARK: - Header
 
     /// Score, count, bases, batter and the last call, in one card. The
@@ -246,7 +244,7 @@ struct FullSheetScoringView: View {
                 .buttonStyle(.plain)
             }
 
-            if settings.notationDetail == .full, !chain.isEmpty {
+            if !chain.isEmpty {
                 trajectoryMenu
             }
         }
@@ -289,9 +287,18 @@ struct FullSheetScoringView: View {
                 directButton("K", tint: Theme.miss) {
                     store.recordPlay(.strikeout(looking: false, uncaught: false))
                 }
-                directButton("ꓘ", tint: Theme.calledStrike) {
+                // The called-strikeout's backwards K is the app's own "K" glyph
+                // flipped, so it's the same rounded typeface as everything else
+                // rather than a stray character borrowed from another font.
+                directButton(tint: Theme.calledStrike) {
                     store.recordPlay(.strikeout(looking: true, uncaught: false))
+                } label: {
+                    Text("K")
+                        .font(Theme.Typeface.label(14, weight: .heavy))
+                        .foregroundStyle(Theme.calledStrike)
+                        .scaleEffect(x: -1, y: 1)
                 }
+                .accessibilityLabel(Text("Called strikeout"))
             }
         }
     }
@@ -301,28 +308,67 @@ struct FullSheetScoringView: View {
     private static let retiredChoices: [BallInPlayChoice] =
         [.out, .doublePlay, .triplePlay, .sacrificeFly, .sacrificeBunt]
 
+    @ViewBuilder
     private func resultButton(_ choice: BallInPlayChoice) -> some View {
         let enabled = !choice.requiresFielder || !chain.isEmpty
-        return Button {
-            commit(choice)
-        } label: {
-            Text(choice.title)
-                .font(Theme.Typeface.label(14, weight: .heavy))
-                .foregroundStyle(enabled ? choice.tint : Theme.tertiaryText)
-                .frame(maxWidth: .infinity)
-                .frame(height: 40)
-                .luminousFill(enabled ? choice.tint : Theme.neutral.opacity(0.4), cornerRadius: 11)
+
+        // An error has to be charged to someone. With more than one fielder in
+        // the play, tapping E first asks which of them booted it.
+        if choice == .error, enabled, uniqueFielders.count > 1 {
+            Menu {
+                ForEach(uniqueFielders) { fielder in
+                    Button("\(fielder.rawValue)  ·  \(fielder.abbreviation)") {
+                        commitError(fielder: fielder)
+                    }
+                }
+            } label: {
+                resultLabel(choice.title, tint: choice.tint, enabled: true)
+            }
+        } else {
+            Button {
+                commit(choice)
+            } label: {
+                resultLabel(choice.title, tint: choice.tint, enabled: enabled)
+            }
+            .buttonStyle(.plain)
+            .disabled(!enabled)
+            .opacity(enabled ? 1 : 0.5)
         }
-        .buttonStyle(.plain)
-        .disabled(!enabled)
-        .opacity(enabled ? 1 : 0.5)
+    }
+
+    private func resultLabel(_ title: String, tint: Color, enabled: Bool) -> some View {
+        Text(title)
+            .font(Theme.Typeface.label(14, weight: .heavy))
+            .foregroundStyle(enabled ? tint : Theme.tertiaryText)
+            .frame(maxWidth: .infinity)
+            .frame(height: 40)
+            .luminousFill(enabled ? tint : Theme.neutral.opacity(0.4), cornerRadius: 11)
+    }
+
+    /// The fielders in the current chain, de-duplicated but kept in the order
+    /// they touched the ball — the choices when charging an error.
+    private var uniqueFielders: [Position] {
+        var seen: Set<Position> = []
+        return chain.filter { seen.insert($0).inserted }
     }
 
     private func directButton(_ title: String, tint: Color, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
+        directButton(tint: tint, action: action) {
             Text(title)
                 .font(Theme.Typeface.label(14, weight: .heavy))
                 .foregroundStyle(tint)
+        }
+    }
+
+    /// Same pill as above, but with a custom label — used for the mirrored-K
+    /// called strikeout, which can't be expressed as a plain string.
+    private func directButton<Label: View>(
+        tint: Color,
+        action: @escaping () -> Void,
+        @ViewBuilder label: () -> Label
+    ) -> some View {
+        Button(action: action) {
+            label()
                 .frame(maxWidth: .infinity)
                 .frame(height: 40)
                 .luminousFill(tint, cornerRadius: 11)
@@ -332,11 +378,14 @@ struct FullSheetScoringView: View {
 
     // MARK: - Bottom rail
 
-    /// Baserunning and pitch detail on one line. Velocity and type are menus
-    /// rather than chip rows — two taps instead of one, for the two things
-    /// nobody logs on every pitch, and ninety points of screen back.
+    private static let velocities = Array(55...106)
+    private var showsWheels: Bool { settings.trackPitchVelocity || settings.trackPitchType }
+
+    /// Baserunning on the left, and the pitch-detail wheels sitting right there
+    /// on the right — no window to open. You spin MPH and type to what you saw
+    /// and they stay set for the next pitch.
     private var bottomRail: some View {
-        HStack(spacing: 6) {
+        HStack(alignment: .center, spacing: 8) {
             // Only this strip can ever scroll, and only with the bases loaded.
             // A rail that reflowed to two rows would move every button below it.
             ScrollView(.horizontal, showsIndicators: false) {
@@ -361,30 +410,54 @@ struct FullSheetScoringView: View {
             Spacer(minLength: 0)
 
             if settings.trackPitchVelocity {
-                detailMenu(
-                    title: pendingVelocity.map(String.init) ?? "MPH",
-                    isSet: pendingVelocity != nil
-                ) {
-                    Button("Clear") { pendingVelocity = nil }
-                    ForEach(Self.velocityPresets, id: \.self) { value in
-                        Button("\(value)") { pendingVelocity = value }
-                    }
-                }
+                velocityWheel
             }
-
             if settings.trackPitchType {
-                detailMenu(
-                    title: pendingPitchType?.abbreviation ?? "TYPE",
-                    isSet: pendingPitchType != nil
-                ) {
-                    Button("Clear") { pendingPitchType = nil }
-                    ForEach(PitchType.allCases) { type in
-                        Button(type.abbreviation) { pendingPitchType = type }
-                    }
+                typeWheel
+            }
+        }
+        .frame(height: showsWheels ? 78 : 34)
+    }
+
+    /// A compact wheel that keeps its own "—" for "not set". Narrow and clipped
+    /// so two of them and the baserunning strip all sit on one line.
+    private var velocityWheel: some View {
+        wheelColumn("MPH") {
+            Picker("MPH", selection: $pendingVelocity) {
+                Text("—").tag(Int?.none)
+                ForEach(Self.velocities, id: \.self) { value in
+                    Text("\(value)").tag(Int?.some(value))
                 }
             }
         }
-        .frame(height: 34)
+    }
+
+    private var typeWheel: some View {
+        wheelColumn("TYPE") {
+            Picker("TYPE", selection: $pendingPitchType) {
+                Text("—").tag(PitchType?.none)
+                ForEach(PitchType.allCases) { pitch in
+                    Text(pitch.abbreviation).tag(PitchType?.some(pitch))
+                }
+            }
+        }
+    }
+
+    private func wheelColumn<Content: View>(
+        _ title: String,
+        @ViewBuilder picker: () -> Content
+    ) -> some View {
+        VStack(spacing: 0) {
+            Text(title)
+                .font(Theme.Typeface.overline(8))
+                .tracking(1)
+                .foregroundStyle(Theme.tertiaryText)
+            picker()
+                .pickerStyle(.wheel)
+                .labelsHidden()
+                .frame(width: 62, height: 62)
+                .clipped()
+        }
     }
 
     private func railButton(
@@ -403,27 +476,6 @@ struct FullSheetScoringView: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(Text(label))
-    }
-
-    private func detailMenu<Content: View>(
-        title: String,
-        isSet: Bool,
-        @ViewBuilder content: () -> Content
-    ) -> some View {
-        Menu {
-            content()
-        } label: {
-            HStack(spacing: 4) {
-                Text(title)
-                    .font(Theme.Typeface.label(12, weight: .bold))
-                Image(systemName: "chevron.up.chevron.down")
-                    .font(.system(size: 8, weight: .bold))
-            }
-            .foregroundStyle(isSet ? Theme.accent : Theme.secondaryText)
-            .padding(.horizontal, 10)
-            .frame(height: 30)
-            .luminousCapsule(isSet ? Theme.accent : Theme.neutral, isProminent: isSet)
-        }
     }
 
     // MARK: - Actions
@@ -448,6 +500,25 @@ struct FullSheetScoringView: View {
                 chain: chain,
                 trajectory: trajectory,
                 location: settings.trackBallLocation ? pickedLocation : nil
+            )
+        else { return }
+
+        store.beginGroup()
+        record(pitch: .inPlay)
+        store.recordPlay(outcome)
+        store.endGroup()
+
+        clearPick()
+    }
+
+    /// Commits an error charged to a specific fielder, chosen from the play.
+    private func commitError(fielder: Position) {
+        guard
+            let outcome = BallInPlayChoice.error.outcome(
+                chain: chain,
+                trajectory: trajectory,
+                location: settings.trackBallLocation ? pickedLocation : nil,
+                errorFielder: fielder
             )
         else { return }
 

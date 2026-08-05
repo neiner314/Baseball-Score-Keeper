@@ -184,7 +184,10 @@ final class ScoringComparatorTests: XCTestCase {
             official(index: 4, inning: 1, half: .bottom, eventType: "strikeout"),
             official(index: 5, inning: 1, half: .bottom, eventType: "strikeout")
         ]
-        theirs.append(official(index: 6, inning: 2, half: .top, eventType: "home_run"))
+        // A solo homer drives in a run, so it must carry the RBI the scorer's
+        // own home run does — otherwise the match fails on the RBI, not the
+        // alignment this test is about.
+        theirs.append(official(index: 6, inning: 2, half: .top, eventType: "home_run", rbi: 1))
 
         let report = ScoringComparator.compare(mine: mine, official: theirs, document: driver.document)
 

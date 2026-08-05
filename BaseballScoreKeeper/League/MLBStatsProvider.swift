@@ -12,7 +12,7 @@ import Foundation
 /// which is why every DTO field is optional and every mapping degrades instead
 /// of throwing. The two sources disagree about whether a few values are
 /// strings or numbers — see `MLBStatsDTO.LooseString`.
-struct MLBStatsProvider: RosterProvider, OfficialScoringProvider {
+struct MLBStatsProvider: RosterProvider, OfficialScoringProvider, PitchArsenalProvider {
     var league: League { .mlb }
 
     private let client: HTTPClient
@@ -251,6 +251,69 @@ struct MLBStatsProvider: RosterProvider, OfficialScoringProvider {
             fieldAssignments: assignments,
             benchPlayerIDs: bench
         )
+    }
+
+    // MARK: - Pitch arsenal
+
+    /// The pitcher's mix for the season, ordered by how often each pitch is
+    /// thrown. Folds MLB's many pitch codes onto the eight the app tracks and
+    /// drops any it doesn't recognise, so a new pitch shape shrinks the list
+    /// rather than breaking it.
+    func arsenal(pitcherExternalID: String, season: Int) async throws -> [PitchType] {
+        guard
+            let url = URL(
+                string: "\(base)/v1/people/\(pitcherExternalID)"
+                    + "?hydrate=stats(group=[pitching],type=[pitchArsenal],season=\(season))"
+            )
+        else {
+            throw RosterProviderError.malformedData("bad arsenal URL")
+        }
+
+        let response = try await client.get(url, as: MLBStatsDTO.PeopleResponse.self)
+        let splits = response.people?.first?.stats?.first?.splits ?? []
+
+        var seen: Set<PitchType> = []
+        var arsenal: [PitchType] = []
+        for split in splits.sorted(by: { ($0.stat?.count ?? 0) > ($1.stat?.count ?? 0) }) {
+            guard let type = PitchType(mlbArsenalCode: split.stat?.type?.code) else { continue }
+            if seen.insert(type).inserted { arsenal.append(type) }
+        }
+        return arsenal
+    }
+
+    // MARK: - Season hitting
+
+    /// A batter's season slash line and power numbers from the feed. Returns nil
+    /// if the player has no line yet (a September call-up before their debut).
+    func seasonHitting(playerExternalID: String, season: Int) async throws -> SeasonHittingStats? {
+        guard
+            let url = URL(
+                string: "\(base)/v1/people/\(playerExternalID)"
+                    + "?hydrate=stats(group=[hitting],type=[season],season=\(season))"
+            )
+        else {
+            throw RosterProviderError.malformedData("bad season hitting URL")
+        }
+
+        let response = try await client.get(url, as: MLBStatsDTO.HittingResponse.self)
+        guard let stat = response.people?.first?.stats?.first?.splits?.first?.stat else {
+            return nil
+        }
+
+        return SeasonHittingStats(
+            average: Self.parseRate(stat.avg?.value),
+            homeRuns: Int(stat.homeRuns?.value ?? "") ?? 0,
+            rbis: Int(stat.rbi?.value ?? "") ?? 0,
+            onBase: Self.parseRate(stat.obp?.value)
+        )
+    }
+
+    /// The feed writes rates leading-zero-less (".287", "1.000"), which
+    /// `Double` won't parse until the zero is put back.
+    static func parseRate(_ value: String?) -> Double {
+        guard var value, !value.isEmpty else { return 0 }
+        if value.hasPrefix(".") { value = "0" + value }
+        return Double(value) ?? 0
     }
 
     // MARK: - Official scoring

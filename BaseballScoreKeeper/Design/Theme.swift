@@ -145,8 +145,8 @@ enum Theme {
     )
 
     static let fieldGrass = dynamic(
-        light: UIColor(red: 0.80, green: 0.90, blue: 0.81, alpha: 1),
-        dark: UIColor(hex: 0x16241B)
+        light: UIColor(red: 0.78, green: 0.91, blue: 0.79, alpha: 1),
+        dark: UIColor(hex: 0x1F4229)
     )
 
     static let fieldDirt = dynamic(

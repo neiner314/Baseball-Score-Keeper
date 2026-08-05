@@ -50,7 +50,10 @@ enum Notation {
 
         case .doublePlay(let fielders, let batted):
             let chain = numberChain(fielders)
-            let prefix = detail == .full ? (batted?.trajectory.notationPrefix ?? "") : ""
+            // A grounder's prefix is empty, so an ordinary GIDP still reads
+            // "6-4-3 DP"; a liner or fly into two gets its L/F so the scorer's
+            // trajectory choice is never silently dropped.
+            let prefix = batted?.trajectory.notationPrefix ?? ""
             return chain.isEmpty ? "DP" : "\(prefix)\(chain) DP"
 
         case .triplePlay(let fielders, _):
@@ -87,7 +90,10 @@ enum Notation {
         }
 
         let chain = numberChain(fielders)
-        guard detail == .full, let trajectory = batted?.trajectory else { return chain }
+        // The trajectory prefix rides along whatever the detail setting is —
+        // grounder is blank, so "6-3" stays "6-3" while a liner becomes "L6-3".
+        // Full detail is what adds hit *location*, above and beyond this.
+        guard let trajectory = batted?.trajectory else { return chain }
         return "\(trajectory.notationPrefix)\(chain)"
     }
 
