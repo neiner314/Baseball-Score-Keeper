@@ -18,6 +18,15 @@ struct ScoringDifference: Identifiable, Hashable, Sendable {
     var batter: String
     var kind: Kind
     var officialSummary: String
+    /// The event that resolved the scorer's plate appearance, when they have one
+    /// (a wrong call, an RBI disagreement, or a play the official doesn't share).
+    /// This is the single event a correction rewrites or removes.
+    var myTerminalEventIndex: Int?
+    /// Where to insert a play the scorer missed — right after the previous plate
+    /// appearance, so it lands on the batter who was actually skipped.
+    var insertionEventIndex: Int?
+    /// What the scorer scored, kept so a correction can reuse the fielders.
+    var myOutcome: PlayOutcome?
 
     init(
         id: UUID = UUID(),
@@ -25,7 +34,10 @@ struct ScoringDifference: Identifiable, Hashable, Sendable {
         half: Half,
         batter: String,
         kind: Kind,
-        officialSummary: String = ""
+        officialSummary: String = "",
+        myTerminalEventIndex: Int? = nil,
+        insertionEventIndex: Int? = nil,
+        myOutcome: PlayOutcome? = nil
     ) {
         self.id = id
         self.inning = inning
@@ -33,6 +45,28 @@ struct ScoringDifference: Identifiable, Hashable, Sendable {
         self.batter = batter
         self.kind = kind
         self.officialSummary = officialSummary
+        self.myTerminalEventIndex = myTerminalEventIndex
+        self.insertionEventIndex = insertionEventIndex
+        self.myOutcome = myOutcome
+    }
+
+    /// The category the official scorer has — the call a correction moves toward.
+    var officialCategory: ScoringCategory? {
+        switch kind {
+        case .differentCall(_, let official): official
+        case .missed(let official): official
+        case .differentRBI, .extra: nil
+        }
+    }
+
+    /// Whether this difference can be turned into an edit of the log.
+    var isFixable: Bool {
+        switch kind {
+        case .differentCall: myTerminalEventIndex != nil && officialCategory != .other
+        case .differentRBI: myTerminalEventIndex != nil
+        case .extra: myTerminalEventIndex != nil
+        case .missed: insertionEventIndex != nil && officialCategory != .other
+        }
     }
 
     var inningLabel: String { "\(half.label) \(inning)" }
@@ -97,13 +131,13 @@ enum ScoringComparator {
     }
 
     static func compare(
-        mine: [PlateAppearanceResult],
+        mine: [ScoringEngine.IndexedPlateAppearance],
         official: [OfficialPlay],
         document: GameDocument
     ) -> ScoringReport {
-        var mineByHalf: [HalfKey: [PlateAppearanceResult]] = [:]
+        var mineByHalf: [HalfKey: [ScoringEngine.IndexedPlateAppearance]] = [:]
         for appearance in mine {
-            mineByHalf[HalfKey(inning: appearance.inning, half: appearance.half), default: []]
+            mineByHalf[HalfKey(inning: appearance.result.inning, half: appearance.result.half), default: []]
                 .append(appearance)
         }
 
@@ -119,6 +153,11 @@ enum ScoringComparator {
 
         let keys = Set(mineByHalf.keys).union(officialByHalf.keys).sorted()
 
+        // The last event index of any plate appearance in an earlier half, so a
+        // missed play in a half where the scorer logged nothing still knows
+        // where to slot in.
+        var priorHalvesLastIndex: Int?
+
         for key in keys {
             let mineHalf = mineByHalf[key] ?? []
             let officialHalf = officialByHalf[key] ?? []
@@ -127,10 +166,10 @@ enum ScoringComparator {
             for index in 0..<shared {
                 let appearance = mineHalf[index]
                 let play = officialHalf[index]
-                let mineCategory = ScoringCategory(appearance.outcome)
+                let mineCategory = ScoringCategory(appearance.result.outcome)
                 compared += 1
 
-                let name = batterName(for: appearance, in: document, fallback: play.batterName)
+                let name = batterName(for: appearance.result, in: document, fallback: play.batterName)
 
                 if mineCategory != play.category {
                     differences.append(
@@ -139,20 +178,24 @@ enum ScoringComparator {
                             half: key.half,
                             batter: name,
                             kind: .differentCall(mine: mineCategory, official: play.category),
-                            officialSummary: play.summary
+                            officialSummary: play.summary,
+                            myTerminalEventIndex: appearance.eventIndex,
+                            myOutcome: appearance.result.outcome
                         )
                     )
                     continue
                 }
 
-                if appearance.rbis != play.rbi {
+                if appearance.result.rbis != play.rbi {
                     differences.append(
                         ScoringDifference(
                             inning: key.inning,
                             half: key.half,
                             batter: name,
-                            kind: .differentRBI(mine: appearance.rbis, official: play.rbi),
-                            officialSummary: play.summary
+                            kind: .differentRBI(mine: appearance.result.rbis, official: play.rbi),
+                            officialSummary: play.summary,
+                            myTerminalEventIndex: appearance.eventIndex,
+                            myOutcome: appearance.result.outcome
                         )
                     )
                     continue
@@ -161,7 +204,12 @@ enum ScoringComparator {
                 agreements += 1
             }
 
+            // A play the official has but the scorer skipped: insert it right
+            // after the scorer's last plate appearance in this half (or the
+            // previous half, if they logged none here), so it records for the
+            // batter who was actually passed over.
             if officialHalf.count > shared {
+                let insertAfter = mineHalf.last?.eventIndex ?? priorHalvesLastIndex
                 for play in officialHalf[shared...] {
                     differences.append(
                         ScoringDifference(
@@ -169,7 +217,8 @@ enum ScoringComparator {
                             half: key.half,
                             batter: play.batterName,
                             kind: .missed(official: play.category),
-                            officialSummary: play.summary
+                            officialSummary: play.summary,
+                            insertionEventIndex: (insertAfter ?? -1) + 1
                         )
                     )
                 }
@@ -181,11 +230,17 @@ enum ScoringComparator {
                         ScoringDifference(
                             inning: key.inning,
                             half: key.half,
-                            batter: batterName(for: appearance, in: document, fallback: ""),
-                            kind: .extra(mine: ScoringCategory(appearance.outcome))
+                            batter: batterName(for: appearance.result, in: document, fallback: ""),
+                            kind: .extra(mine: ScoringCategory(appearance.result.outcome)),
+                            myTerminalEventIndex: appearance.eventIndex,
+                            myOutcome: appearance.result.outcome
                         )
                     )
                 }
+            }
+
+            if let last = mineHalf.last?.eventIndex {
+                priorHalvesLastIndex = max(priorHalvesLastIndex ?? last, last)
             }
         }
 

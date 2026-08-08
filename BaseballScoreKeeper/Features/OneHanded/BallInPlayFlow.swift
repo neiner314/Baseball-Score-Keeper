@@ -14,6 +14,10 @@ enum BallInPlayChoice: String, CaseIterable, Identifiable, Hashable, Sendable {
     case triplePlay
     case sacrificeFly
     case sacrificeBunt
+    /// An intentional walk — offered on the no-fielder ring for the free pass.
+    /// It isn't a batted ball, so committing it records a walk with no
+    /// preceding in-play pitch.
+    case intentionalWalk
 
     var id: String { rawValue }
 
@@ -30,6 +34,7 @@ enum BallInPlayChoice: String, CaseIterable, Identifiable, Hashable, Sendable {
         case .triplePlay: "TP"
         case .sacrificeFly: "SF"
         case .sacrificeBunt: "SH"
+        case .intentionalWalk: "IBB"
         }
     }
 
@@ -40,6 +45,7 @@ enum BallInPlayChoice: String, CaseIterable, Identifiable, Hashable, Sendable {
         case .homeRun: Theme.hitByPitch
         case .error: Theme.foul
         case .fieldersChoice, .sacrificeFly, .sacrificeBunt: Theme.neutral
+        case .intentionalWalk: Theme.ball
         }
     }
 
@@ -48,7 +54,7 @@ enum BallInPlayChoice: String, CaseIterable, Identifiable, Hashable, Sendable {
     /// name. Every other outcome needs someone to have touched it.
     var requiresFielder: Bool {
         switch self {
-        case .single, .double, .triple, .homeRun: false
+        case .single, .double, .triple, .homeRun, .intentionalWalk: false
         default: true
         }
     }
@@ -76,6 +82,12 @@ enum BallInPlayChoice: String, CaseIterable, Identifiable, Hashable, Sendable {
         location: FieldLocation?,
         errorFielder: Position? = nil
     ) -> PlayOutcome? {
+        // An intentional walk isn't a batted ball, so it never touches the
+        // fielding chain or trajectory.
+        if self == .intentionalWalk {
+            return .walk(intentional: true)
+        }
+
         let batted = BattedBall(trajectory: trajectory, location: location)
 
         if let kind = hitKind {
@@ -101,7 +113,7 @@ enum BallInPlayChoice: String, CaseIterable, Identifiable, Hashable, Sendable {
             return .sacrificeFly(fielder: first)
         case .sacrificeBunt:
             return .sacrificeBunt(fielders: Self.completed(chain, trajectory: .bunt))
-        case .single, .double, .triple, .homeRun:
+        case .single, .double, .triple, .homeRun, .intentionalWalk:
             return nil
         }
     }
@@ -148,7 +160,9 @@ enum BallInPlayChoice: String, CaseIterable, Identifiable, Hashable, Sendable {
     /// fielder entered at all only the hits remain.
     static func choices(for state: GameState, chain: [Position]) -> [BallInPlayChoice] {
         let hits: [BallInPlayChoice] = [.single, .double, .triple, .homeRun]
-        guard let first = chain.first else { return hits }
+        // With nobody having fielded it the ball was a hit — or the free pass
+        // the scorer reached for when the pitcher put the batter on.
+        guard let first = chain.first else { return hits + [.intentionalWalk] }
 
         var choices: [BallInPlayChoice] = hits + [.error, .fieldersChoice]
 
@@ -305,6 +319,7 @@ private struct ChoiceButton: View {
         case .triplePlay: "Triple play"
         case .sacrificeFly: "Sacrifice fly"
         case .sacrificeBunt: "Sacrifice bunt"
+        case .intentionalWalk: "Intentional walk"
         }
     }
 }

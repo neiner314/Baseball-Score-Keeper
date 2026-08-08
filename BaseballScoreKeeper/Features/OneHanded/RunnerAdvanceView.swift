@@ -98,7 +98,8 @@ struct RunnerAdvanceView: View {
                 node(for: .home, unit: DrawnField.plate, size: size, label: "H")
             }
         }
-        .frame(height: 210)
+        .aspectRatio(1.15, contentMode: .fit)
+        .frame(maxHeight: 220)
     }
 
     /// A dashed line from the runner's base to the base they're being sent to,
@@ -135,7 +136,7 @@ struct RunnerAdvanceView: View {
                     .frame(width: 28, height: 28)
                     .rotationEffect(.degrees(45))
 
-                Text(target == .held ? current.number.prefix(2).isEmpty ? label : label : label)
+                Text(label)
                     .font(Theme.Typeface.score(12))
                     .foregroundStyle(isSelected ? .white : (allowed ? Theme.primaryText : Theme.tertiaryText))
             }

@@ -12,6 +12,7 @@ struct AccuracyReportView: View {
     @State private var report: ScoringReport?
     @State private var isLoading = false
     @State private var errorMessage: String?
+    @State private var editing: ScoringDifference?
 
     var body: some View {
         NavigationStack {
@@ -52,6 +53,13 @@ struct AccuracyReportView: View {
                     await run()
                 }
             }
+            .sheet(item: $editing) { difference in
+                PlayCorrectionSheet(difference: difference) {
+                    editing = nil
+                    Task { await run() }
+                }
+                .environment(store)
+            }
         }
     }
 
@@ -85,13 +93,25 @@ struct AccuracyReportView: View {
 
                     VStack(spacing: 0) {
                         ForEach(report.differences) { difference in
-                            DifferenceRow(difference: difference)
+                            Button {
+                                guard difference.isFixable else { return }
+                                editing = difference
+                            } label: {
+                                DifferenceRow(difference: difference)
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(!difference.isFixable)
+
                             if difference.id != report.differences.last?.id {
                                 Divider().overlay(Theme.hairline)
                             }
                         }
                     }
                     .scorecardSurface()
+
+                    Text("Tap a difference to fix how you scored it.")
+                        .font(Theme.Typeface.caption())
+                        .foregroundStyle(Theme.tertiaryText)
                 }
             }
             .padding(16)
@@ -155,7 +175,7 @@ struct AccuracyReportView: View {
 
         do {
             let official = try await provider.officialPlays(gameID: gameID)
-            let mine = ScoringEngine.plateAppearances(document: store.document)
+            let mine = ScoringEngine.indexedPlateAppearances(document: store.document)
             report = ScoringComparator.compare(
                 mine: mine,
                 official: official,
@@ -195,9 +215,16 @@ private struct DifferenceRow: View {
             }
 
             Spacer(minLength: 0)
+
+            if difference.isFixable {
+                Image(systemName: "pencil.circle")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(Theme.accent)
+            }
         }
         .padding(.horizontal, Theme.Metrics.cardPadding)
         .padding(.vertical, 9)
+        .contentShape(Rectangle())
     }
 
     private var tint: Color {

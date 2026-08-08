@@ -60,19 +60,24 @@ struct NewGameView: View {
                         } label: {
                             NavigationRowLabel(home.name, value: "\(home.players.count) players")
                         }
-                        Divider().overlay(Theme.hairline)
-                        ActionRow("Load away from My Teams", symbol: "person.crop.rectangle.stack") {
-                            loadingSide = .away
-                        }
-                        ActionRow("Load home from My Teams", symbol: "person.crop.rectangle.stack") {
-                            loadingSide = .home
-                        }
-                        Divider().overlay(Theme.hairline)
-                        ActionRow("Paste \(away.name) roster", symbol: "doc.on.clipboard") {
-                            importingSide = .away
-                        }
-                        ActionRow("Paste \(home.name) roster", symbol: "doc.on.clipboard") {
-                            importingSide = .home
+                        // Load/Paste are ways to fill a roster from scratch; an
+                        // imported game already has both sides, so hide them and
+                        // leave just the Save rows below.
+                        if importedSetup == nil {
+                            Divider().overlay(Theme.hairline)
+                            ActionRow("Load away from My Teams", symbol: "person.crop.rectangle.stack") {
+                                loadingSide = .away
+                            }
+                            ActionRow("Load home from My Teams", symbol: "person.crop.rectangle.stack") {
+                                loadingSide = .home
+                            }
+                            Divider().overlay(Theme.hairline)
+                            ActionRow("Paste \(away.name) roster", symbol: "doc.on.clipboard") {
+                                importingSide = .away
+                            }
+                            ActionRow("Paste \(home.name) roster", symbol: "doc.on.clipboard") {
+                                importingSide = .home
+                            }
                         }
                         Divider().overlay(Theme.hairline)
                         ActionRow("Save \(away.name) to My Teams", symbol: "square.and.arrow.down") {

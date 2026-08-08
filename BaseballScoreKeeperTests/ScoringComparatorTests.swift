@@ -68,7 +68,7 @@ final class ScoringComparatorTests: XCTestCase {
         driver.single()
         driver.strikeout()
 
-        let mine = ScoringEngine.plateAppearances(document: driver.document)
+        let mine = ScoringEngine.indexedPlateAppearances(document: driver.document)
         let theirs = [
             official(index: 0, inning: 1, half: .top, eventType: "single"),
             official(index: 1, inning: 1, half: .top, eventType: "strikeout")
@@ -89,7 +89,7 @@ final class ScoringComparatorTests: XCTestCase {
         var driver = GameDriver()
         driver.single()
 
-        let mine = ScoringEngine.plateAppearances(document: driver.document)
+        let mine = ScoringEngine.indexedPlateAppearances(document: driver.document)
         let theirs = [official(index: 0, inning: 1, half: .top, eventType: "field_error")]
 
         let report = ScoringComparator.compare(mine: mine, official: theirs, document: driver.document)
@@ -109,7 +109,7 @@ final class ScoringComparatorTests: XCTestCase {
         driver.walk()
         driver.single()
 
-        let mine = ScoringEngine.plateAppearances(document: driver.document)
+        let mine = ScoringEngine.indexedPlateAppearances(document: driver.document)
         let theirs = [
             official(index: 0, inning: 1, half: .top, eventType: "walk"),
             official(index: 1, inning: 1, half: .top, eventType: "single", rbi: 1)
@@ -129,7 +129,7 @@ final class ScoringComparatorTests: XCTestCase {
         var driver = GameDriver()
         driver.single()
 
-        let mine = ScoringEngine.plateAppearances(document: driver.document)
+        let mine = ScoringEngine.indexedPlateAppearances(document: driver.document)
         let theirs = [
             official(index: 0, inning: 1, half: .top, eventType: "single"),
             official(index: 1, inning: 1, half: .top, eventType: "double")
@@ -153,7 +153,7 @@ final class ScoringComparatorTests: XCTestCase {
         driver.single()
         driver.homeRun()
 
-        let mine = ScoringEngine.plateAppearances(document: driver.document)
+        let mine = ScoringEngine.indexedPlateAppearances(document: driver.document)
         let theirs = [official(index: 0, inning: 1, half: .top, eventType: "single")]
 
         let report = ScoringComparator.compare(mine: mine, official: theirs, document: driver.document)
@@ -174,7 +174,7 @@ final class ScoringComparatorTests: XCTestCase {
         driver.retireSide()   // and the bottom
         driver.homeRun()      // top 2
 
-        let mine = ScoringEngine.plateAppearances(document: driver.document)
+        let mine = ScoringEngine.indexedPlateAppearances(document: driver.document)
         var theirs: [OfficialPlay] = [
             official(index: 0, inning: 1, half: .top, eventType: "single"),
             official(index: 1, inning: 1, half: .top, eventType: "strikeout"),
@@ -203,12 +203,47 @@ final class ScoringComparatorTests: XCTestCase {
         var driver = GameDriver()
         driver.single()
 
-        let mine = ScoringEngine.plateAppearances(document: driver.document)
+        let mine = ScoringEngine.indexedPlateAppearances(document: driver.document)
         let report = ScoringComparator.compare(mine: mine, official: [], document: driver.document)
 
         XCTAssertEqual(report.comparedPlays, 0)
         XCTAssertEqual(report.accuracyPercent, "—")
         XCTAssertEqual(report.differences.count, 1, "the one play we have is surplus")
+    }
+
+    /// The payoff: finding a hit you should have scored an error, tapping it,
+    /// and having the report come back clean — with nothing else disturbed.
+    @MainActor
+    func testCorrectingAWrongCallMakesItMatch() {
+        var driver = GameDriver()
+        driver.single()
+        driver.strikeout()
+
+        let store = GameStore(document: driver.document)
+        let theirs = [
+            official(index: 0, inning: 1, half: .top, eventType: "field_error"),
+            official(index: 1, inning: 1, half: .top, eventType: "strikeout")
+        ]
+
+        var report = ScoringComparator.compare(
+            mine: ScoringEngine.indexedPlateAppearances(document: store.document),
+            official: theirs,
+            document: store.document
+        )
+        XCTAssertEqual(report.differences.count, 1)
+        let difference = report.differences[0]
+        XCTAssertTrue(difference.isFixable)
+
+        let corrected = PlayOutcome.matching(difference.officialCategory!, reusing: difference.myOutcome)
+        store.correctPlay(atEventIndex: difference.myTerminalEventIndex!, to: corrected!)
+
+        report = ScoringComparator.compare(
+            mine: ScoringEngine.indexedPlateAppearances(document: store.document),
+            official: theirs,
+            document: store.document
+        )
+        XCTAssertTrue(report.differences.isEmpty, "the correction should leave a clean report")
+        XCTAssertEqual(report.accuracyPercent, "100%")
     }
 
     func testPlateAppearancesComeBackInOrder() {
@@ -217,10 +252,10 @@ final class ScoringComparatorTests: XCTestCase {
         driver.strikeout()
         driver.homeRun()
 
-        let mine = ScoringEngine.plateAppearances(document: driver.document)
+        let mine = ScoringEngine.indexedPlateAppearances(document: driver.document)
         XCTAssertEqual(mine.count, 3)
-        XCTAssertEqual(ScoringCategory(mine[0].outcome), .single)
-        XCTAssertEqual(ScoringCategory(mine[1].outcome), .strikeout)
-        XCTAssertEqual(ScoringCategory(mine[2].outcome), .homeRun)
+        XCTAssertEqual(ScoringCategory(mine[0].result.outcome), .single)
+        XCTAssertEqual(ScoringCategory(mine[1].result.outcome), .strikeout)
+        XCTAssertEqual(ScoringCategory(mine[2].result.outcome), .homeRun)
     }
 }

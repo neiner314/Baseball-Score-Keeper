@@ -216,6 +216,58 @@ struct BatterCard: View {
     }
 }
 
+/// A slim strip under the at-bat card naming the next two hitters due up:
+/// who's on deck and who's in the hole. No stats — just the order coming, so
+/// the scorer can see it without opening the lineup.
+struct OnDeckBar: View {
+    var onDeck: Player?
+    var inTheHole: Player?
+
+    var body: some View {
+        HStack(spacing: 12) {
+            slot(label: "ON DECK", player: onDeck)
+
+            Rectangle()
+                .fill(Theme.tertiaryText.opacity(0.35))
+                .frame(width: 1, height: 16)
+
+            slot(label: "IN HOLE", player: inTheHole)
+        }
+        .padding(.horizontal, Theme.Metrics.cardPadding)
+        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity)
+        .scorecardSurface()
+    }
+
+    private func slot(label: String, player: Player?) -> some View {
+        HStack(spacing: 7) {
+            Text(label)
+                .font(Theme.Typeface.overline(9))
+                .tracking(1.1)
+                .foregroundStyle(Theme.tertiaryText)
+
+            if let player {
+                Text(player.number.isEmpty ? "—" : player.number)
+                    .font(Theme.Typeface.score(11))
+                    .foregroundStyle(Theme.tertiaryText)
+                Text(player.shortName.uppercased())
+                    .font(Theme.Typeface.label(13, weight: .heavy))
+                    .foregroundStyle(Theme.secondaryText)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+            } else {
+                Text("—")
+                    .font(Theme.Typeface.label(13, weight: .heavy))
+                    .foregroundStyle(Theme.tertiaryText)
+            }
+
+            Spacer(minLength: 0)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .combine)
+    }
+}
+
 /// A floating panel for the pitcher currently on the mound: who he is, his
 /// live pitch count, and the line he's thrown so far this game.
 ///

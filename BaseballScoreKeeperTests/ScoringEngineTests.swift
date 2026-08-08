@@ -3,6 +3,32 @@ import XCTest
 
 final class ScoringEngineTests: XCTestCase {
 
+    // MARK: - Defensive alignment
+
+    /// The swap the alignment diamond performs: two grouped position switches,
+    /// each sending a player to the other's spot, must trade them cleanly rather
+    /// than leaving one position pointing at both.
+    func testTwoPositionSwitchesSwapFielders() throws {
+        var driver = GameDriver()
+        let side: Side = .home
+        let before = driver.state.lineups[side]
+        let shortstop = try XCTUnwrap(before.playerID(playing: .shortstop))
+        let secondBase = try XCTUnwrap(before.playerID(playing: .secondBase))
+
+        driver.apply(.substitution(Substitution(
+            side: side, kind: .positionSwitch, incomingPlayerID: shortstop,
+            outgoingPlayerID: nil, battingSlot: nil, position: .secondBase, runnerBase: nil
+        )))
+        driver.apply(.substitution(Substitution(
+            side: side, kind: .positionSwitch, incomingPlayerID: secondBase,
+            outgoingPlayerID: nil, battingSlot: nil, position: .shortstop, runnerBase: nil
+        )))
+
+        let after = driver.state.lineups[side]
+        XCTAssertEqual(after.playerID(playing: .secondBase), shortstop)
+        XCTAssertEqual(after.playerID(playing: .shortstop), secondBase)
+    }
+
     // MARK: - Count
 
     func testBallsAndStrikesAccumulate() {

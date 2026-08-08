@@ -8,6 +8,8 @@ struct SavedGamesView: View {
 
     @State private var games: [GameDocument] = []
     @State private var loaded = false
+    @State private var chosen: GameDocument?
+    @State private var viewingScorebook: GameDocument?
 
     var body: some View {
         Group {
@@ -17,7 +19,7 @@ struct SavedGamesView: View {
                 List {
                     ForEach(games) { game in
                         Button {
-                            onOpenGame(game)
+                            chosen = game
                         } label: {
                             SavedGameRow(document: game)
                         }
@@ -36,6 +38,21 @@ struct SavedGamesView: View {
             if !games.isEmpty {
                 ToolbarItem(placement: .topBarTrailing) { EditButton() }
             }
+        }
+        .confirmationDialog(
+            chosen?.title ?? "",
+            isPresented: Binding(get: { chosen != nil }, set: { if !$0 { chosen = nil } }),
+            titleVisibility: .visible,
+            presenting: chosen
+        ) { game in
+            Button("Open Scorekeeper") { onOpenGame(game) }
+            Button("View Scorebook") { viewingScorebook = game }
+            Button("Cancel", role: .cancel) {}
+        } message: { _ in
+            Text("Score this game, or read its book?")
+        }
+        .navigationDestination(item: $viewingScorebook) { game in
+            ScorebookViewerView(document: game)
         }
         .task { await load() }
     }

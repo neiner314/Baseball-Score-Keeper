@@ -164,10 +164,10 @@ final class FieldingChainTests: XCTestCase {
 
     // MARK: - What the ring offers
 
-    func testRingOffersOnlyHitsWithNoFielder() {
+    func testRingOffersHitsAndIntentionalWalkWithNoFielder() {
         let driver = GameDriver()
         let choices = BallInPlayChoice.choices(for: driver.state, chain: [])
-        XCTAssertEqual(choices, [.single, .double, .triple, .homeRun])
+        XCTAssertEqual(choices, [.single, .double, .triple, .homeRun, .intentionalWalk])
     }
 
     func testDoublePlayIsOfferedOnlyWithARunnerToErase() {

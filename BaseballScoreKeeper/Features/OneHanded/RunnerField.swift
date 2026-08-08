@@ -10,8 +10,11 @@ import SwiftUI
 struct RunnerField: View {
     var bases: Bases
     var runnerNumber: (Base) -> String?
+    /// The batting team's bench, offered as pinch runners on a lit base.
+    var availableRunners: [Player] = []
     var onSteal: (Base) -> Void
     var onCaught: (Base) -> Void
+    var onPinchRun: (Base, Player) -> Void = { _, _ in }
 
     var body: some View {
         GeometryReader { geo in
@@ -47,6 +50,19 @@ struct RunnerField: View {
                     onCaught(base)
                 } label: {
                     Label("Caught stealing", systemImage: "xmark.circle")
+                }
+                if !availableRunners.isEmpty {
+                    Menu {
+                        ForEach(availableRunners) { runner in
+                            Button {
+                                onPinchRun(base, runner)
+                            } label: {
+                                Text("\(runner.displayNumber) \(runner.name)")
+                            }
+                        }
+                    } label: {
+                        Label("Pinch runner", systemImage: "arrow.left.arrow.right")
+                    }
                 }
             } label: {
                 marker(occupied: true, number: runnerNumber(base))

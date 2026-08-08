@@ -10,6 +10,7 @@ struct GlobalSettingsView: View {
     @Binding var appearance: AppAppearance
 
     @State private var settings = AppPreferences.defaultTrackingSettings
+    @AppStorage(AppLanguage.storageKey) private var languageCode = AppLanguage.default.rawValue
 
     var body: some View {
         ScrollView {
@@ -20,6 +21,18 @@ struct GlobalSettingsView: View {
                         selection: $settings.appearance,
                         label: \.label
                     )
+                }
+
+                SettingsGroup("Language") {
+                    ForEach(AppLanguage.allCases) { language in
+                        ChoiceRow(
+                            title: language.label,
+                            subtitle: nil,
+                            isSelected: languageCode == language.rawValue
+                        ) {
+                            languageCode = language.rawValue
+                        }
+                    }
                 }
 
                 SettingsGroup(
@@ -70,6 +83,39 @@ struct GlobalSettingsView: View {
         .onChange(of: settings) { _, newValue in
             AppPreferences.defaultTrackingSettings = newValue
             appearance = newValue.appearance
+        }
+    }
+}
+
+/// The language the whole app renders in, chosen in Settings and applied live at
+/// the root by overriding the environment locale.
+///
+/// The cases match the localizations shipped in the string catalog. Each
+/// language names itself in its own tongue, so it's findable no matter what the
+/// app currently reads as.
+enum AppLanguage: String, CaseIterable, Identifiable {
+    case english = "en"
+    case spanish = "es"
+    case japanese = "ja"
+    case korean = "ko"
+
+    static let storageKey = "appLanguage"
+
+    /// The language a fresh install starts in, before anything's been chosen.
+    static let `default` = AppLanguage.english
+
+    var id: String { rawValue }
+
+    /// The locale to push into the environment.
+    var locale: Locale { Locale(identifier: rawValue) }
+
+    /// The language's name in its own language, so a speaker can spot it.
+    var label: String {
+        switch self {
+        case .english: return "English"
+        case .spanish: return "Español"
+        case .japanese: return "日本語"
+        case .korean: return "한국어"
         }
     }
 }

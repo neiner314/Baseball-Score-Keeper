@@ -1,10 +1,59 @@
 import SwiftUI
 
-/// Substitutions and pitching changes.
+/// The substitution sheet. Defense — the common, fiddly case — is a field of
+/// gloves you rearrange by tap or drag; the older form is one tap away for
+/// pinch hitters, pinch runners and pitching changes.
+struct SubstitutionView: View {
+    @Environment(GameStore.self) private var store
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var side: Side
+    @State private var showsManual = false
+
+    init(defaultSide: Side) {
+        _side = State(initialValue: defaultSide)
+    }
+
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 12) {
+                Picker("Team", selection: $side) {
+                    Text(store.teams.away.abbreviation).tag(Side.away)
+                    Text(store.teams.home.abbreviation).tag(Side.home)
+                }
+                .pickerStyle(.segmented)
+
+                ScrollView {
+                    DefensiveAlignmentView(side: side)
+                        .padding(.bottom, 8)
+                }
+            }
+            .padding(.horizontal, Theme.Metrics.screenMargin)
+            .padding(.top, 8)
+            .appBackground()
+            .navigationTitle("Defense")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Done") { dismiss() }
+                }
+                ToolbarItem(placement: .primaryAction) {
+                    Button("Batting…") { showsManual = true }
+                }
+            }
+            .sheet(isPresented: $showsManual) {
+                ManualSubstitutionForm(defaultSide: side).environment(store)
+            }
+        }
+    }
+}
+
+/// The original form-driven substitution flow, kept for pinch hitters, pinch
+/// runners and pitching changes.
 ///
 /// The available players are whoever hasn't appeared yet — a player who has
 /// left the game can't come back, so they never show up in the list.
-struct SubstitutionView: View {
+struct ManualSubstitutionForm: View {
     @Environment(GameStore.self) private var store
     @Environment(\.dismiss) private var dismiss
 

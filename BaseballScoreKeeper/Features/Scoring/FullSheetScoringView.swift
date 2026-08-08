@@ -19,7 +19,7 @@ struct FullSheetScoringView: View {
     @State private var chain: [Position] = []
     @State private var pickedLocation: FieldLocation?
     @State private var trajectory: Trajectory = .grounder
-    @State private var pendingVelocity: Int?
+    @State private var pendingVelocity: Int? = 90
     @State private var pendingPitchType: PitchType?
     @State private var showsChallengeSheet = false
 
@@ -79,6 +79,9 @@ struct FullSheetScoringView: View {
                 }
 
                 BaseDiamond(bases: store.state.bases, size: 50)
+                    .overlay {
+                        GrandSlamFireworks(trigger: store.grandSlamCelebration)
+                    }
             }
 
             batterLine
@@ -425,7 +428,7 @@ struct FullSheetScoringView: View {
         wheelColumn("MPH") {
             Picker("MPH", selection: $pendingVelocity) {
                 Text("—").tag(Int?.none)
-                ForEach(Self.velocities, id: \.self) { value in
+                ForEach(Self.velocities.reversed(), id: \.self) { value in
                     Text("\(value)").tag(Int?.some(value))
                 }
             }
@@ -436,7 +439,7 @@ struct FullSheetScoringView: View {
         wheelColumn("TYPE") {
             Picker("TYPE", selection: $pendingPitchType) {
                 Text("—").tag(PitchType?.none)
-                ForEach(PitchType.allCases) { pitch in
+                ForEach(PitchType.allCases.reversed()) { pitch in
                     Text(pitch.abbreviation).tag(PitchType?.some(pitch))
                 }
             }
@@ -490,7 +493,7 @@ struct FullSheetScoringView: View {
 
     private func record(pitch outcome: PitchOutcome) {
         store.recordPitch(outcome: outcome, velocity: pendingVelocity, type: pendingPitchType)
-        pendingVelocity = nil
+        pendingVelocity = 90
         pendingPitchType = nil
     }
 

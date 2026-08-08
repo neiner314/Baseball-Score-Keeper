@@ -18,6 +18,7 @@ struct TrackingSettingsView: View {
     var onExitGame: () -> Void = {}
 
     @State private var showsExitConfirmation = false
+    @State private var showsResetConfirmation = false
 
     var body: some View {
         @Bindable var store = store
@@ -134,6 +135,34 @@ struct TrackingSettingsView: View {
                         ) {
                             showsExitConfirmation = true
                         }
+                        // Anchor the confirmation to the row itself, so it
+                        // springs from the button instead of the bottom of the
+                        // screen — you can see what you're about to leave.
+                        .popover(isPresented: $showsExitConfirmation, arrowEdge: .bottom) {
+                            ExitGamePopover(
+                                onLeave: {
+                                    showsExitConfirmation = false
+                                    dismiss()
+                                    onExitGame()
+                                },
+                                onKeep: { showsExitConfirmation = false }
+                            )
+                            .presentationCompactAdaptation(.popover)
+                        }
+
+                        ResetScoringRow {
+                            showsResetConfirmation = true
+                        }
+                        // A reset can't be undone, so make the scorer say yes to
+                        // it out loud before the log is thrown away.
+                        .alert("Reset scoring?", isPresented: $showsResetConfirmation) {
+                            Button("Reset", role: .destructive) {
+                                store.resetScoring()
+                            }
+                            Button("Cancel", role: .cancel) {}
+                        } message: {
+                            Text("Are you sure you want to reset? All scoring progress will be deleted.")
+                        }
                     }
                 }
                 .padding(.horizontal, Theme.Metrics.screenMargin)
@@ -146,19 +175,6 @@ struct TrackingSettingsView: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done") { dismiss() }
                 }
-            }
-            .confirmationDialog(
-                "Leave this game?",
-                isPresented: $showsExitConfirmation,
-                titleVisibility: .visible
-            ) {
-                Button("Return to Main Menu") {
-                    dismiss()
-                    onExitGame()
-                }
-                Button("Keep Scoring", role: .cancel) {}
-            } message: {
-                Text("Your progress is saved — you can pick this game back up from where you left off.")
             }
             // The sheet carries its own trait environment, so the root's
             // color-scheme change doesn't reach it while it's open. Driving it
@@ -329,6 +345,82 @@ struct SettingsActionRow: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+    }
+}
+
+/// A destructive settings row that throws away all scoring progress. Drawn in
+/// red so it reads as the weightier choice sitting under the exit row, and
+/// gated by a confirmation before anything is deleted.
+struct ResetScoringRow: View {
+    var action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 12) {
+                Image(systemName: "arrow.counterclockwise")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(.red)
+                    .frame(width: 22)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Reset")
+                        .font(Theme.Typeface.label(15))
+                        .foregroundStyle(.red)
+                    Text("Delete all scoring progress and start over")
+                        .font(Theme.Typeface.caption())
+                        .foregroundStyle(Theme.tertiaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Spacer(minLength: 0)
+            }
+            .padding(.vertical, 11)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+/// The "leave this game?" confirmation, shown as a popover that springs from
+/// the exit row. Living close to the button makes the choice feel like it
+/// belongs to it — and the leaving action is drawn in red, so it reads as the
+/// weightier of the two before you tap.
+private struct ExitGamePopover: View {
+    var onLeave: () -> Void
+    var onKeep: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Leave this game?")
+                    .font(Theme.Typeface.label(16))
+                    .foregroundStyle(Theme.primaryText)
+                Text("Your progress is saved — you can pick this game back up from where you left off.")
+                    .font(Theme.Typeface.caption())
+                    .foregroundStyle(Theme.secondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Button(action: onLeave) {
+                Text("Return to Main Menu")
+                    .font(Theme.Typeface.label(15))
+                    .foregroundStyle(.red)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+
+            Button(action: onKeep) {
+                Text("Keep Scoring")
+                    .font(Theme.Typeface.label(15))
+                    .foregroundStyle(Theme.accent)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(18)
+        .frame(width: 260)
     }
 }
 

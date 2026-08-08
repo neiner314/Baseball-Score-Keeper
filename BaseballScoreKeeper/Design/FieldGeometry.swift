@@ -78,6 +78,15 @@ enum DrawnField {
     static let rightFoulPole = CGPoint(x: 0.94, y: 0.46)
     static let fenceControl = CGPoint(x: 0.50, y: 0.02)
 
+    /// The normalized spot of a base bag.
+    static func unit(for base: Base) -> CGPoint {
+        switch base {
+        case .first: firstBag
+        case .second: secondBag
+        case .third: thirdBag
+        }
+    }
+
     /// The dirt is the base diamond pushed out a little from its centre, so the
     /// bags sit on the infield rather than on its very edge.
     static func infieldCorners(outset: CGFloat = 1.18) -> [CGPoint] {

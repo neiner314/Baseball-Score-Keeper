@@ -91,6 +91,19 @@ enum ScoringCategory: String, Hashable, Sendable, CaseIterable {
         }
     }
 
+    /// True when going from `self` to `other` needs someone to have fielded the
+    /// ball — so the correction can reuse the fielders the scorer already
+    /// entered rather than inventing a chain.
+    var needsFielders: Bool {
+        switch self {
+        case .fieldOut, .fieldersChoice, .error, .doublePlay, .triplePlay,
+             .sacrificeFly, .sacrificeBunt:
+            return true
+        default:
+            return false
+        }
+    }
+
     /// How MLB's feed scored it. Their vocabulary is finer than this app's —
     /// a force out and a fielder's choice are one thing to a scorebook, and a
     /// strikeout that doubled off a runner is still a strikeout for the batter.
@@ -112,6 +125,82 @@ enum ScoringCategory: String, Hashable, Sendable, CaseIterable {
         case "sac_fly", "sac_fly_double_play": self = .sacrificeFly
         case "sac_bunt", "sac_bunt_double_play": self = .sacrificeBunt
         default: self = .other
+        }
+    }
+}
+
+extension PlayOutcome {
+    /// The fielders this play credited, in order — the chain a scorer would
+    /// reuse when correcting the call to something else the fielders still
+    /// touched (a "hit" that was really an error off the same glove).
+    var fieldingChain: [Position] {
+        switch self {
+        case .hit(_, _, let fielder): return fielder.map { [$0] } ?? []
+        case .fieldOut(let fielders, _): return fielders
+        case .error(let fielder, _, _): return [fielder]
+        case .fieldersChoice(let fielders, _): return fielders
+        case .doublePlay(let fielders, _): return fielders
+        case .triplePlay(let fielders, _): return fielders
+        case .sacrificeFly(let fielder): return [fielder]
+        case .sacrificeBunt(let fielders): return fielders
+        case .strikeout, .walk, .hitByPitch, .catchersInterference: return []
+        }
+    }
+
+    /// Builds the outcome the official scorer's call implies, reusing as much of
+    /// the play the scorer already entered as still applies.
+    ///
+    /// The feed's category is coarser than a full play — it knows "error" but
+    /// not off whose glove — so anything needing fielders borrows them from the
+    /// `original` call when it had them, and falls back to a plausible default
+    /// otherwise. Returns nil for categories the app can't represent as a single
+    /// batted-ball outcome.
+    static func matching(_ category: ScoringCategory, reusing original: PlayOutcome?) -> PlayOutcome? {
+        let chain = original?.fieldingChain ?? []
+        let batted = original?.battedBall
+        let first = chain.first
+
+        switch category {
+        case .single: return .hit(.single, batted: batted, fielder: first)
+        case .double: return .hit(.double, batted: batted, fielder: first)
+        case .triple: return .hit(.triple, batted: batted, fielder: first)
+        case .homeRun: return .hit(.homeRun, batted: nil, fielder: nil)
+        case .walk: return .walk(intentional: false)
+        case .hitByPitch: return .hitByPitch
+        case .catchersInterference: return .catchersInterference
+        case .strikeout: return .strikeout(looking: false, uncaught: false)
+        case .fieldOut:
+            return .fieldOut(
+                fielders: chain.isEmpty ? [.shortstop, .firstBase] : chain,
+                batted: batted ?? BattedBall(trajectory: .grounder)
+            )
+        case .fieldersChoice:
+            return .fieldersChoice(
+                fielders: chain.isEmpty ? [.shortstop, .secondBase] : chain,
+                batted: batted ?? BattedBall(trajectory: .grounder)
+            )
+        case .error:
+            return .error(
+                fielder: first ?? .shortstop,
+                batted: batted ?? BattedBall(trajectory: .grounder),
+                basesAwarded: 1
+            )
+        case .doublePlay:
+            return .doublePlay(
+                fielders: chain.count >= 2 ? chain : [.shortstop, .secondBase, .firstBase],
+                batted: batted ?? BattedBall(trajectory: .grounder)
+            )
+        case .triplePlay:
+            return .triplePlay(
+                fielders: chain.count >= 2 ? chain : [.shortstop, .secondBase, .firstBase],
+                batted: batted ?? BattedBall(trajectory: .grounder)
+            )
+        case .sacrificeFly:
+            return .sacrificeFly(fielder: first ?? .centerField)
+        case .sacrificeBunt:
+            return .sacrificeBunt(fielders: chain.isEmpty ? [.pitcher, .firstBase] : chain)
+        case .other:
+            return nil
         }
     }
 }

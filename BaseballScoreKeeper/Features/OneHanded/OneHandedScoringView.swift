@@ -20,9 +20,9 @@ private struct BallInPlayState {
     /// the fielders that could be charged.
     var errorCandidates: [Position] = []
     /// Set while the "where did the runners end up?" prompt is up, holding the
-    /// play waiting to be recorded and the chosen destination per runner.
+    /// play waiting to be recorded and the runners still to be placed.
     var pendingOutcome: PlayOutcome?
-    var advanceTargets: [Base: AdvanceTarget] = [:]
+    var advancePrompts: [RunnerAdvancePrompt] = []
 
     mutating func closeDial() {
         isDialActive = false
@@ -38,7 +38,7 @@ private struct BallInPlayState {
         showsRing = false
         errorCandidates = []
         pendingOutcome = nil
-        advanceTargets = [:]
+        advancePrompts = []
     }
 }
 
@@ -152,14 +152,11 @@ struct OneHandedScoringView: View {
         VStack(spacing: 10) {
             ScoreBar(state: store.state, teams: store.teams)
 
-            BatterCard(
-                batter: store.currentBatter,
-                position: store.currentBatterPosition,
-                pitches: store.state.currentAtBatPitches,
-                battingLine: store.currentBatterLine,
-                seasonStats: store.currentBatter.flatMap { store.seasonStats(for: $0) },
-                headline: store.lastHeadline
-            )
+            batterCardMenu
+
+            if !store.state.isFinal {
+                OnDeckBar(onDeck: store.onDeckBatter, inTheHole: store.inTheHoleBatter)
+            }
 
             challengePrompt
         }
@@ -167,6 +164,41 @@ struct OneHandedScoringView: View {
         .padding(.top, 6)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .animation(.easeOut(duration: 0.2), value: store.lastHeadline)
+    }
+
+    private var batterCard: some View {
+        BatterCard(
+            batter: store.currentBatter,
+            position: store.currentBatterPosition,
+            pitches: store.state.currentAtBatPitches,
+            battingLine: store.currentBatterLine,
+            seasonStats: store.currentBatter.flatMap { store.seasonStats(for: $0) },
+            headline: store.lastHeadline
+        )
+    }
+
+    /// The at-bat card doubles as the pinch-hitter control: with a bench to
+    /// pick from, tapping it swaps a hitter into the slot due up. With an empty
+    /// bench it's the plain read-only card.
+    @ViewBuilder
+    private var batterCardMenu: some View {
+        if battingBench.isEmpty {
+            batterCard
+        } else {
+            Menu {
+                Section("Pinch hitter") {
+                    ForEach(battingBench) { player in
+                        Button {
+                            pinchHit(player)
+                        } label: {
+                            Text("\(player.displayNumber) \(player.name)")
+                        }
+                    }
+                }
+            } label: {
+                batterCard
+            }
+        }
     }
 
     /// The runs-per-inning bar, along the very bottom edge under the pitch pad.
@@ -205,20 +237,52 @@ struct OneHandedScoringView: View {
     /// it. Tapping a runner records a steal or a caught stealing.
     private var pitcherPanel: some View {
         VStack(spacing: 10) {
-            PitcherPanel(
-                pitcher: store.currentPitcher,
-                line: store.currentPitcherLine
-            )
+            moundBoxMenu
 
             RunnerField(
                 bases: store.state.bases,
                 runnerNumber: { store.runnerOnBase($0)?.number },
+                availableRunners: battingBench,
                 onSteal: { store.record(.stolenBase(from: $0)) },
-                onCaught: { store.record(.caughtStealing(from: $0)) }
+                onCaught: { store.record(.caughtStealing(from: $0)) },
+                onPinchRun: { base, runner in pinchRun(base, runner) }
             )
             .frame(maxWidth: 150)
+            .overlay {
+                GrandSlamFireworks(trigger: store.grandSlamCelebration)
+            }
         }
         .frame(maxWidth: 178, alignment: .top)
+    }
+
+    private var moundBox: some View {
+        PitcherPanel(
+            pitcher: store.currentPitcher,
+            line: store.currentPitcherLine
+        )
+    }
+
+    /// The mound box doubles as the pitching-change control: with an arm on the
+    /// bench, tapping it brings a reliever in. With nobody left it's read-only.
+    @ViewBuilder
+    private var moundBoxMenu: some View {
+        if availablePitchers.isEmpty {
+            moundBox
+        } else {
+            Menu {
+                Section("Pitching change") {
+                    ForEach(availablePitchers) { pitcher in
+                        Button {
+                            changePitcher(to: pitcher)
+                        } label: {
+                            Text("\(pitcher.displayNumber) \(pitcher.name)")
+                        }
+                    }
+                }
+            } label: {
+                moundBox
+            }
+        }
     }
 
     /// Undo on top, the pitch pad under it, and the pitch-type/velocity pad
@@ -502,148 +566,24 @@ struct OneHandedScoringView: View {
 
     // MARK: - Runner advancement
 
-    /// "Where did the runners end up?" — each runner already aboard, with the
-    /// automatic destination pre-selected so the scorer only taps the ones that
-    /// went somewhere else (held at second, took the extra base, thrown out).
+    /// The runners the hit put in motion, asked about one at a time on a small
+    /// diamond: tap the base they reached, then Safe or Out.
     private var advanceOverlay: some View {
-        ZStack(alignment: .bottom) {
-            Color.black.opacity(0.62)
-                .ignoresSafeArea()
-                .contentShape(Rectangle())
-
-            VStack(spacing: 16) {
-                Text("WHERE DID THE RUNNERS END UP?")
-                    .font(Theme.Typeface.overline(11))
-                    .tracking(1.4)
-                    .foregroundStyle(.white.opacity(0.7))
-
-                VStack(spacing: 12) {
-                    ForEach(advanceBases) { base in
-                        advanceRow(base)
-                    }
-                }
-
-                HStack(spacing: 10) {
-                    Button {
-                        cancelAdvance()
-                    } label: {
-                        Text("BACK")
-                            .font(Theme.Typeface.label(14, weight: .heavy))
-                            .foregroundStyle(.white)
-                            .frame(maxWidth: .infinity)
-                            .frame(height: 50)
-                            .background(Capsule().fill(.white.opacity(0.14)))
-                    }
-                    .buttonStyle(.plain)
-
-                    Button {
-                        commitAdvances()
-                    } label: {
-                        Text("SCORE IT")
-                            .font(Theme.Typeface.label(15, weight: .heavy))
-                            .foregroundStyle(.white)
-                            .frame(maxWidth: .infinity)
-                            .frame(height: 50)
-                            .luminousFill(Theme.accent, cornerRadius: 25, isProminent: true)
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-            .frame(maxWidth: 380)
-            .padding(.horizontal, 18)
-            .padding(.bottom, 40)
-        }
-        .transition(.opacity)
-    }
-
-    private var advanceBases: [Base] {
-        flow.advanceTargets.keys.sorted { $0.rawValue > $1.rawValue }
-    }
-
-    private func advanceRow(_ base: Base) -> some View {
-        HStack(spacing: 10) {
-            VStack(alignment: .leading, spacing: 1) {
-                Text(base.label)
-                    .font(Theme.Typeface.overline(9))
-                    .foregroundStyle(.white.opacity(0.5))
-                Text(store.runnerOnBase(base)?.shortName ?? "Runner")
-                    .font(Theme.Typeface.label(14, weight: .heavy))
-                    .foregroundStyle(.white)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.7)
-            }
-            .frame(width: 78, alignment: .leading)
-
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 7) {
-                    ForEach(Self.targetOptions(for: base), id: \.self) { target in
-                        advanceChip(base: base, target: target)
-                    }
-                }
-                .padding(.vertical, 1)
-            }
-        }
-    }
-
-    private func advanceChip(base: Base, target: AdvanceTarget) -> some View {
-        let selected = flow.advanceTargets[base] == target
-        let tint = Self.advanceTint(target)
-        return Button {
-            Haptics.shared.zoneChanged(enabled: settings.hapticsEnabled)
-            flow.advanceTargets[base] = target
-        } label: {
-            Text(Self.advanceLabel(target))
-                .font(Theme.Typeface.label(13, weight: .bold))
-                .foregroundStyle(selected ? .white : tint)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 9)
-                .background(
-                    Capsule().fill(selected ? tint : .white.opacity(0.12))
-                )
-        }
-        .buttonStyle(.plain)
-    }
-
-    /// Forward stops only — a runner can hold, take a base ahead, score, or be
-    /// thrown out, but never retreat.
-    private static func targetOptions(for base: Base) -> [AdvanceTarget] {
-        switch base {
-        case .first: [.held, .second, .third, .home, .out]
-        case .second: [.held, .third, .home, .out]
-        case .third: [.held, .home, .out]
-        }
-    }
-
-    private static func advanceLabel(_ target: AdvanceTarget) -> String {
-        switch target {
-        case .held: "Hold"
-        case .first: "1st"
-        case .second: "2nd"
-        case .third: "3rd"
-        case .home: "Score"
-        case .out: "Out"
-        }
-    }
-
-    private static func advanceTint(_ target: AdvanceTarget) -> Color {
-        switch target {
-        case .out: Theme.miss
-        case .home: Theme.ball
-        default: Theme.accent
-        }
-    }
-
-    private func commitAdvances() {
-        guard let outcome = flow.pendingOutcome else { return }
-        let advances = flow.advanceTargets.map { ManualAdvance(from: $0.key, to: $0.value) }
-        Haptics.shared.commit(enabled: settings.hapticsEnabled)
-        record(outcome, manualAdvances: advances)
+        RunnerAdvanceView(
+            prompts: flow.advancePrompts,
+            hapticsEnabled: settings.hapticsEnabled,
+            onComplete: { advances in
+                guard let outcome = flow.pendingOutcome else { return }
+                record(outcome, manualAdvances: advances)
+            },
+            onCancel: { cancelAdvance() }
+        )
     }
 
     private func cancelAdvance() {
         withAnimation(.easeOut(duration: 0.16)) {
             flow.pendingOutcome = nil
-            flow.advanceTargets = [:]
+            flow.advancePrompts = []
             flow.showsRing = true
         }
     }
@@ -705,6 +645,10 @@ struct OneHandedScoringView: View {
     /// Routes a ring pick: an error with more than one fielder in the play
     /// opens the "who booted it?" picker first; everything else commits.
     private func pick(_ choice: BallInPlayChoice) {
+        if choice == .intentionalWalk {
+            recordNonBattedPlay(.walk(intentional: true))
+            return
+        }
         if choice == .error, uniqueFielders.count > 1 {
             Haptics.shared.tap(enabled: settings.hapticsEnabled)
             withAnimation(.easeOut(duration: 0.16)) {
@@ -744,21 +688,24 @@ struct OneHandedScoringView: View {
         finalize(outcome)
     }
 
-    /// A play that moves existing runners in more than one plausible way opens
-    /// the advancement prompt first; everything else records straight away.
+    /// A play where the runners already aboard genuinely might go different
+    /// places — or be thrown out — opens the advancement prompt first.
+    /// Everything else records straight away on the automatic rules.
     private func finalize(_ outcome: PlayOutcome) {
-        let occupied = store.state.bases.occupied
-        guard !occupied.isEmpty, Self.allowsAdvancePrompt(outcome) else {
+        let bases = store.state.bases
+        guard !bases.occupied.isEmpty, Self.allowsAdvancePrompt(outcome) else {
             record(outcome, manualAdvances: nil)
             return
         }
 
-        var targets: [Base: AdvanceTarget] = [:]
-        for base in occupied {
-            targets[base] = ScoringEngine.defaultAdvance(
-                for: outcome,
-                runnerOn: base,
-                bases: store.state.bases
+        // Lead runner first — the one the defense is usually playing.
+        let prompts: [RunnerAdvancePrompt] = bases.occupied.sorted { $0.rawValue > $1.rawValue }.map { base in
+            RunnerAdvancePrompt(
+                base: base,
+                name: store.runnerOnBase(base)?.shortName ?? "Runner",
+                number: store.runnerOnBase(base)?.number ?? "",
+                forced: outcome.batterReachesBase && bases.forcedBases.contains(base),
+                defaultTarget: ScoringEngine.defaultAdvance(for: outcome, runnerOn: base, bases: bases)
             )
         }
 
@@ -766,19 +713,22 @@ struct OneHandedScoringView: View {
         withAnimation(.easeOut(duration: 0.16)) {
             flow.showsRing = false
             flow.errorCandidates = []
-            flow.advanceTargets = targets
+            flow.advancePrompts = prompts
             flow.pendingOutcome = outcome
         }
     }
 
-    /// Plays where a runner already aboard has a real choice of where to stop.
-    /// A walk moves only forced runners, a strikeout moves nobody, and a home
-    /// run scores everyone — none of those need asking.
+    /// Any ball put in play with runners aboard can move them somewhere the
+    /// automatic rules won't guess — a runner tagging up, taking an extra base
+    /// on an out, or thrown out trying. So every batted-ball outcome asks,
+    /// seeded with the sensible default so the common case is a single confirm.
+    /// Only the plays that can't move a standing runner past their forced base
+    /// skip it: a strikeout, a free pass, and the home run that scores everyone.
     private static func allowsAdvancePrompt(_ outcome: PlayOutcome) -> Bool {
         switch outcome {
         case .hit(let kind, _, _): return kind != .homeRun
-        case .error, .fieldOut, .fieldersChoice, .sacrificeFly: return true
-        default: return false
+        case .strikeout, .walk, .hitByPitch, .catchersInterference: return false
+        default: return true
         }
     }
 
@@ -790,6 +740,91 @@ struct OneHandedScoringView: View {
         store.recordPlay(outcome, manualAdvances: manualAdvances)
         store.endGroup()
         flow.reset()
+    }
+
+    /// A play that never was a batted ball — an intentional walk picked off the
+    /// no-fielder ring — is recorded on its own, with no in-play pitch in front
+    /// of it, since nothing was actually put in play.
+    private func recordNonBattedPlay(_ outcome: PlayOutcome) {
+        Haptics.shared.commit(enabled: settings.hapticsEnabled)
+        store.recordPlay(outcome, manualAdvances: nil)
+        flow.reset()
+    }
+
+    // MARK: - Substitutions
+
+    /// The batting team's bench: anyone who hasn't appeared yet, offered as a
+    /// pinch hitter on the at-bat card or a pinch runner on a lit base.
+    private var battingBench: [Player] {
+        let lineup = store.state.battingLineup
+        return store.teams[store.state.battingSide].players
+            .filter { !lineup.appearedPlayerIDs.contains($0.id) }
+    }
+
+    /// The fielding team's available arms for a pitching change — unused
+    /// pitchers, or the whole bench if no true pitcher is left to bring in.
+    private var availablePitchers: [Player] {
+        let lineup = store.state.fieldingLineup
+        let unused = store.teams[store.state.fieldingSide].players
+            .filter { !lineup.appearedPlayerIDs.contains($0.id) }
+        let pitchers = unused.filter { $0.primaryPosition == .pitcher }
+        return pitchers.isEmpty ? unused : pitchers
+    }
+
+    private func changePitcher(to pitcher: Player) {
+        let lineup = store.state.fieldingLineup
+        // The batting order is only touched when the pitcher actually hits —
+        // with a DH the change is defense-only.
+        let slot = lineup.usesDesignatedHitter
+            ? nil
+            : lineup.currentPitcherID.flatMap { lineup.slotIndex(of: $0) }
+        store.substitute(
+            Substitution(
+                side: store.state.fieldingSide,
+                kind: .pitchingChange,
+                incomingPlayerID: pitcher.id,
+                outgoingPlayerID: lineup.currentPitcherID,
+                battingSlot: slot,
+                position: .pitcher,
+                runnerBase: nil
+            )
+        )
+    }
+
+    private func pinchHit(_ player: Player) {
+        let lineup = store.state.battingLineup
+        guard !lineup.slots.isEmpty else { return }
+        let slotIndex = lineup.battingIndex % lineup.slots.count
+        let slot = lineup.slots[slotIndex]
+        store.substitute(
+            Substitution(
+                side: store.state.battingSide,
+                kind: .pinchHitter,
+                incomingPlayerID: player.id,
+                outgoingPlayerID: slot.playerID,
+                battingSlot: slotIndex,
+                position: slot.position,
+                runnerBase: nil
+            )
+        )
+    }
+
+    private func pinchRun(_ base: Base, _ player: Player) {
+        let lineup = store.state.battingLineup
+        guard let outgoing = store.state.bases[base]?.playerID else { return }
+        let slot = lineup.slotIndex(of: outgoing)
+        let position = slot.map { lineup.slots[$0].position } ?? .designatedHitter
+        store.substitute(
+            Substitution(
+                side: store.state.battingSide,
+                kind: .pinchRunner,
+                incomingPlayerID: player.id,
+                outgoingPlayerID: outgoing,
+                battingSlot: slot,
+                position: position,
+                runnerBase: base
+            )
+        )
     }
 
     private func recordPitch(_ outcome: PitchOutcome) {

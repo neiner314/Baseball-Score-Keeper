@@ -17,6 +17,10 @@ final class GameStore {
     private(set) var lastPlateAppearance: PlateAppearanceResult?
     /// Set when a ball is in play and the scorer still owes us a result.
     private(set) var isAwaitingPlayResult = false
+    /// Carries a fresh id the moment a grand slam clears the bases, so the live
+    /// field can set off a small fireworks celebration. A new id each time lets
+    /// the animation re-fire even on back-to-back slams.
+    private(set) var grandSlamCelebration: UUID?
 
     private var redoStack: [[RecordedEvent]] = []
     private var activeGroupID: UUID?
@@ -80,6 +84,22 @@ final class GameStore {
     var currentBatterPosition: Position? {
         guard let id = state.currentBatterID else { return nil }
         return state.battingLineup.slots.first { $0.playerID == id }?.position
+    }
+
+    /// The hitter due up after the one at the plate.
+    var onDeckBatter: Player? { dueUpBatter(slotsAhead: 1) }
+
+    /// The hitter due up two after the one at the plate.
+    var inTheHoleBatter: Player? { dueUpBatter(slotsAhead: 2) }
+
+    /// Walks `slotsAhead` places down the batting order from the current slot,
+    /// wrapping back to the top, so late in an inning on-deck rolls around to
+    /// the leadoff hitter.
+    private func dueUpBatter(slotsAhead: Int) -> Player? {
+        let lineup = state.battingLineup
+        guard !lineup.slots.isEmpty else { return nil }
+        let index = (lineup.battingIndex + slotsAhead) % lineup.slots.count
+        return document.player(id: lineup.slots[index].playerID)
     }
 
     func player(id: UUID) -> Player? { document.player(id: id) }
@@ -202,6 +222,11 @@ final class GameStore {
             lastHeadline = result.headline
             if let appearance = result.plateAppearance {
                 lastPlateAppearance = appearance
+                // A home run that scores four can only be a bases-loaded slam:
+                // three on plus the batter. That's the cue for the fireworks.
+                if appearance.outcome.hitKind == .homeRun, result.runs.count == 4 {
+                    grandSlamCelebration = UUID()
+                }
             }
             announce(result)
         }
@@ -288,6 +313,27 @@ final class GameStore {
         )
     }
 
+    // MARK: - Resetting
+
+    /// Wipes every recorded pitch, play and substitution and returns the game
+    /// to its opening state, keeping the teams, lineups, rules and tracking
+    /// settings exactly as they were set up. State is a fold over the log, so
+    /// clearing the log and replaying re-derives the fresh start-of-game state.
+    ///
+    /// There is no undoing this — it sits outside the undo stack and clears the
+    /// redo history — so the UI gates it behind a confirmation.
+    func resetScoring() {
+        document.events.removeAll()
+        redoStack.removeAll()
+        activeGroupID = nil
+        state = ScoringEngine.replay(document: document)
+        isAwaitingPlayResult = false
+        lastPlateAppearance = nil
+        grandSlamCelebration = nil
+        lastHeadline = "Scoring reset"
+        persist()
+    }
+
     // MARK: - Undo / redo
 
     func undo() {
@@ -320,6 +366,83 @@ final class GameStore {
         state = ScoringEngine.replay(document: document)
         isAwaitingPlayResult = Self.awaitingResult(in: document)
         lastPlateAppearance = nil
+        persist()
+    }
+
+    // MARK: - Correcting the log
+
+    /// Direct edits to the event log used by the accuracy report to fix a play
+    /// scored wrong. Because state is a fold over the log, replacing one play and
+    /// replaying re-derives only what genuinely flows from it and leaves every
+    /// other call exactly as the scorer entered it.
+    ///
+    /// These sit outside the undo stack — a correction is a considered act made
+    /// from a preview, not a stray tap — so they clear the redo history and can
+    /// themselves be re-corrected rather than undone with the back button.
+
+    /// Rewrites the outcome of the plate appearance the given event resolved.
+    /// The event may be a `.play` or the `.pitch` that auto-resolved a strikeout,
+    /// walk or hit-by-pitch; either way it becomes an explicit `.play`.
+    func correctPlay(atEventIndex index: Int, to outcome: PlayOutcome, manualAdvances: [ManualAdvance]? = nil) {
+        guard document.events.indices.contains(index) else { return }
+        let existing = document.events[index]
+        document.events[index] = RecordedEvent(
+            id: existing.id,
+            date: existing.date,
+            event: .play(outcome, manualAdvances: manualAdvances),
+            groupID: existing.groupID
+        )
+        rebuildAfterEdit(headline: "Play corrected")
+    }
+
+    /// Inserts a plate appearance the scorer missed. It records for whichever
+    /// batter is due up at that point in the replay — the one who was skipped.
+    func insertPlay(atEventIndex index: Int, outcome: PlayOutcome, manualAdvances: [ManualAdvance]? = nil) {
+        let clamped = max(0, min(index, document.events.count))
+        document.events.insert(
+            RecordedEvent(event: .play(outcome, manualAdvances: manualAdvances)),
+            at: clamped
+        )
+        rebuildAfterEdit(headline: "Play added")
+    }
+
+    /// Removes a plate appearance the scorer entered but the official doesn't
+    /// have — the resolving event and the pitches that led up to it.
+    func removePlateAppearance(terminalEventIndex index: Int) {
+        guard document.events.indices.contains(index) else { return }
+        let lower = plateAppearanceLowerBound(endingAt: index)
+        document.events.removeSubrange(lower...index)
+        rebuildAfterEdit(headline: "Play removed")
+    }
+
+    /// The base/out situation as it stood just before the plate appearance the
+    /// given event resolved, so a correction that changes who scored can put the
+    /// runners up on the right diamond.
+    func stateBeforePlay(terminalEventIndex index: Int) -> GameState {
+        guard document.events.indices.contains(index) else { return state }
+        let lower = plateAppearanceLowerBound(endingAt: index)
+        var prefix = document
+        prefix.events = Array(document.events[0..<lower])
+        return ScoringEngine.replay(document: prefix)
+    }
+
+    /// Walks back over the pitches that belong to the plate appearance resolved
+    /// at `index`. The count resets every appearance, so every pitch between the
+    /// previous non-pitch event and this one is part of it.
+    private func plateAppearanceLowerBound(endingAt index: Int) -> Int {
+        var lower = index
+        while lower > 0, document.events[lower - 1].event.isPitch {
+            lower -= 1
+        }
+        return lower
+    }
+
+    private func rebuildAfterEdit(headline: String) {
+        state = ScoringEngine.replay(document: document)
+        isAwaitingPlayResult = Self.awaitingResult(in: document)
+        redoStack.removeAll()
+        lastPlateAppearance = nil
+        lastHeadline = headline
         persist()
     }
 

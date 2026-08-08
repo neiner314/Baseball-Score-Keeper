@@ -10,6 +10,24 @@
             "state" : "new",
             "value" : "BaseballScoreKeeper"
           }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "machine_translated",
+            "value" : "Anotador de Béisbol"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "machine_translated",
+            "value" : "野球スコアキーパー"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "machine_translated",
+            "value" : "야구 스코어키퍼"
+          }
         }
       }
     }

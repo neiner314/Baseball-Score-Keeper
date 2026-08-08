@@ -113,14 +113,29 @@ enum ScoringEngine {
     /// Every completed plate appearance, in order. What the accuracy check
     /// diffs against the league's official scoring.
     static func plateAppearances(document: GameDocument) -> [PlateAppearanceResult] {
-        var state = initialState(document: document)
-        var appearances: [PlateAppearanceResult] = []
+        indexedPlateAppearances(document: document).map(\.result)
+    }
 
-        for recorded in resolved(document.events) {
+    /// A completed plate appearance paired with the index of the event that
+    /// resolved it — a `.play`, or the `.pitch` that finished a strikeout, walk
+    /// or hit-by-pitch. This is what lets a scorer tap a difference in the
+    /// accuracy report and have that one call corrected without disturbing any
+    /// other. `resolved` preserves order and count, so the index lines up with
+    /// `document.events`.
+    struct IndexedPlateAppearance: Sendable {
+        var eventIndex: Int
+        var result: PlateAppearanceResult
+    }
+
+    static func indexedPlateAppearances(document: GameDocument) -> [IndexedPlateAppearance] {
+        var state = initialState(document: document)
+        var appearances: [IndexedPlateAppearance] = []
+
+        for (index, recorded) in resolved(document.events).enumerated() {
             let result = apply(recorded.event, to: state, document: document)
             state = result.state
             if let appearance = result.plateAppearance {
-                appearances.append(appearance)
+                appearances.append(IndexedPlateAppearance(eventIndex: index, result: appearance))
             }
         }
         return appearances
